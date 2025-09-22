@@ -156,6 +156,34 @@ const container = document.getElementById('container');
 const btnRestart = document.getElementById('btnRestart');
 const btnShare = document.getElementById('btnShare');
 
+/* ====== ДОБАВЛЕНО: инициализация Telegram WebApp, функция отправки данных ====== */
+// помечаем, что Telegram WebApp доступен (если страница запущена внутри Telegram)
+function initTelegramWebApp() {
+  try {
+    if (window.Telegram && Telegram.WebApp) {
+      // уведомляем клиента Telegram, что WebApp готов
+      Telegram.WebApp.ready && Telegram.WebApp.ready();
+    }
+  } catch (e) {
+    console.warn('Telegram init failed', e);
+  }
+}
+// попытка инициализации сразу и при загрузке
+initTelegramWebApp();
+window.addEventListener('load', initTelegramWebApp);
+
+// функция для отправки score в бот (через Telegram WebApp.sendData)
+function sendScoreToTelegram(score) {
+  try {
+    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
+      Telegram.WebApp.sendData(JSON.stringify({ score }));
+    }
+  } catch (e) {
+    console.warn('sendData failed', e);
+  }
+}
+/* ================================================================ */
+
 let tileSize, canvasW, canvasH;
 function resizeCanvas(){
   const maxW = Math.min(window.innerWidth - 40, 960);
@@ -306,14 +334,10 @@ function willCollide(nx, ny){
 }
 
 async function onGameOver(){
-  // 1) Try to notify Telegram via WebApp.sendData (this allows bot/LeadTeh to get message.from)
+  // 1) Try to notify Telegram via WebApp.sendData (через функцию)
   try {
-    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.sendData) {
-      try {
-        Telegram.WebApp.sendData(JSON.stringify({ score: scoreVar }));
-      } catch(e){ console.warn('sendData failed', e); }
-    }
-  } catch(e){ /* ignore */ }
+    sendScoreToTelegram(scoreVar);
+  } catch(e){ console.warn('sendData failed', e); }
 
   // 2) Send to LB_URL and LeadTeh webhook (best-effort)
   try {
@@ -760,3 +784,4 @@ window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar,
 </script>
 </body>
 </html>
+
