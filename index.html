@@ -221,32 +221,57 @@ function initGame(){
   if (timerId) clearTimeout(timerId); scheduleNextStep(); requestAnimationFrame(renderLoop);
 }
 
-/* ===== NEW onGameOver (твоя версия) ===== */
+/* ========== NEW onGameOver (замена) ========== */
 async function onGameOver() {
   const score = Number(scoreVar) || 0;
   console.log('GAME OVER, score=', score);
 
+  // 1) Telegram WebApp
   try {
-    if (window.Telegram?.WebApp && typeof Telegram.WebApp.sendData === 'function') {
-      Telegram.WebApp.sendData(JSON.stringify({ score, ts: Date.now() }));
-    } else { console.warn('Telegram.WebApp.sendData not available'); }
-  } catch(e){ console.warn('sendData error', e); }
+    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
+      const payload = { score, ts: Date.now() };
+      console.log('calling Telegram.WebApp.sendData', payload);
+      Telegram.WebApp.sendData(JSON.stringify(payload));
+    } else {
+      console.warn('Telegram.WebApp.sendData not available (не WebApp?)');
+    }
+  } catch (e) {
+    console.warn('sendData error', e);
+  }
 
+  // 2) Google Apps Script (LB_URL)
   try {
     if (LB_URL) {
       const body = { username: getPlayerName(), score, tg_id: getTelegramIdOrNull() };
-      const r = await fetch(LB_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      console.log('Posting to LB_URL', LB_URL, body);
+      const r = await fetch(LB_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
       console.log('LB_URL response', r.status);
     }
-  } catch(e){ console.warn('LB_URL post failed', e); }
+  } catch (e){
+    console.warn('LB_URL post failed', e);
+  }
 
+  // 3) LeadTeh webhook
   try {
     const body2 = { username: getPlayerName(), score, tg_id: getTelegramIdOrNull() };
-    const r2 = await fetch(LEADTEH_WEBHOOK_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body2) });
+    console.log('Posting to LeadTeh webhook', LEADTEH_WEBHOOK_URL, body2);
+    const r2 = await fetch(LEADTEH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body2)
+    });
     console.log('LeadTeh response', r2.status);
-  } catch(e){ console.warn('LeadTeh direct post failed (likely CORS)', e); }
+  } catch (e){
+    console.warn('LeadTeh direct post failed (likely CORS)', e);
+  }
 
-  btnRestart.style.display='block'; btnShare.style.display='block';
+  // 4) Показать кнопки
+  btnRestart.style.display = 'block';
+  btnShare.style.display = 'block';
 }
 
 /* ===== Step logic ===== */
@@ -381,4 +406,5 @@ window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar,
 </script>
 </body>
 </html>
+
 
