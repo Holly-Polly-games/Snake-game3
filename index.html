@@ -88,7 +88,7 @@
     <button id="btnShare" class="overlay-btn">Таблица лидеров</button>
   </div>
 
-  <!-- ===== ЛИДЕРБОРД: модалка (добавлено) ===== -->
+  <!-- ===== ЛИДЕРБОРД: модалка ===== -->
   <div id="leaderboardModal" class="lb-modal" hidden>
     <div class="lb-card">
       <div class="lb-head">
@@ -144,9 +144,7 @@ const categoryConfig = {
 const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
 
 /* ========== ENDPOINTS ========== */
-// Google Apps Script leaderboard URL (doPost/doGet)
 const LB_URL = 'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
-// LeadTeh incoming webhook (вы предоставили)
 const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/1e6ea4e0-0631-43ad-80fe-c714adc12268';
 
 /* ========== DOM & canvas ========== */
@@ -156,34 +154,36 @@ const container = document.getElementById('container');
 const btnRestart = document.getElementById('btnRestart');
 const btnShare = document.getElementById('btnShare');
 
-/* ====== ДОБАВЛЕНО: инициализация Telegram WebApp, функция отправки данных ====== */
-// помечаем, что Telegram WebApp доступен (если страница запущена внутри Telegram)
+/* ====== Telegram WebApp init ====== */
 function initTelegramWebApp() {
   try {
     if (window.Telegram && Telegram.WebApp) {
-      // уведомляем клиента Telegram, что WebApp готов
       Telegram.WebApp.ready && Telegram.WebApp.ready();
     }
   } catch (e) {
     console.warn('Telegram init failed', e);
   }
 }
-// попытка инициализации сразу и при загрузке
 initTelegramWebApp();
 window.addEventListener('load', initTelegramWebApp);
 
-// функция для отправки score в бот (через Telegram WebApp.sendData)
-function sendScoreToTelegram(score) {
-  try {
-    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
-      Telegram.WebApp.sendData(JSON.stringify({ score }));
-    }
-  } catch (e) {
-    console.warn('sendData failed', e);
+/* helpers */
+function getPlayerName(){
+  let name = localStorage.getItem('hp_player_name');
+  if (!name) {
+    name = prompt('Как тебя подписать в таблице лидеров?') || 'Игрок';
+    name = name.trim().slice(0, 40);
+    localStorage.setItem('hp_player_name', name);
   }
+  return name;
 }
-/* ================================================================ */
+function getTelegramIdOrNull(){
+  const tg = window.Telegram?.WebApp;
+  const u = tg?.initDataUnsafe?.user;
+  return u?.id ? String(u.id) : '';
+}
 
+/* ====== canvas sizing ====== */
 let tileSize, canvasW, canvasH;
 function resizeCanvas(){
   const maxW = Math.min(window.innerWidth - 40, 960);
@@ -216,9 +216,9 @@ for (let i=1;i<=hairsprayConfig.count;i++){
   const img = new Image();
   img.src = `assets/${hairsprayConfig.prefix}${i}.png`;
   hairsprayImages.push(img);
-}
 
 // snake images (лежат рядом с HTML)
+}
 const headImg = new Image(); headImg.src = 'golova.png';
 const telo1 = new Image(); telo1.src = 'telo1.png'; // main body
 const telo2 = new Image(); telo2.src = 'telo2.png'; // tail (rotates)
@@ -333,20 +333,55 @@ function willCollide(nx, ny){
   return false;
 }
 
-async function onGameOver(){
-  // 1) Try to notify Telegram via WebApp.sendData (через функцию)
-  try {
-    sendScoreToTelegram(scoreVar);
-  } catch(e){ console.warn('sendData failed', e); }
+/* ========== NEW onGameOver (замена) ========== */
+async function onGameOver() {
+  const score = Number(scoreVar) || 0;
+  console.log('GAME OVER, score=', score);
 
-  // 2) Send to LB_URL and LeadTeh webhook (best-effort)
+  // 1) Telegram WebApp
   try {
-    await submitScoreSimple(scoreVar);
-  } catch(e){
-    console.warn('submitScore error', e);
+    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
+      const payload = { score, ts: Date.now() };
+      console.log('calling Telegram.WebApp.sendData', payload);
+      Telegram.WebApp.sendData(JSON.stringify(payload));
+    } else {
+      console.warn('Telegram.WebApp.sendData not available (не WebApp?)');
+    }
+  } catch (e) {
+    console.warn('sendData error', e);
   }
 
-  // show overlays
+  // 2) Google Apps Script (LB_URL)
+  try {
+    if (LB_URL) {
+      const body = { username: getPlayerName(), score, tg_id: getTelegramIdOrNull() };
+      console.log('Posting to LB_URL', LB_URL, body);
+      const r = await fetch(LB_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      console.log('LB_URL response', r.status);
+    }
+  } catch (e){
+    console.warn('LB_URL post failed', e);
+  }
+
+  // 3) LeadTeh webhook (может заблокировать CORS)
+  try {
+    const body2 = { username: getPlayerName(), score, tg_id: getTelegramIdOrNull() };
+    console.log('Posting to LeadTeh webhook', LEADTEH_WEBHOOK_URL, body2);
+    const r2 = await fetch(LEADTEH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body2)
+    });
+    console.log('LeadTeh response', r2.status);
+  } catch (e){
+    console.warn('LeadTeh direct post failed (likely CORS)', e);
+  }
+
+  // 4) Показать кнопки
   btnRestart.style.display = 'block';
   btnShare.style.display = 'block';
 }
@@ -412,7 +447,7 @@ function scheduleNextStep(){
   timerId = setTimeout(performStep, stepDelay);
 }
 
-/* ========== Particles: slower and longer life ========= */
+/* ========== Particles ========= */
 function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
   const cx = (cellX + cellsW/2) * tileSize;
   const cy = (cellY + cellsH/2) * tileSize;
@@ -612,7 +647,7 @@ function drawSnake(){
   }
 }
 
-/* ========== Draw particles & score ========== */
+/* ========== UI: particles & score & loop & input ========== */
 function drawParticles(){
   if (!particles.length) return;
   ctx.save();
@@ -643,7 +678,6 @@ function drawScore(){
   ctx.restore();
 }
 
-/* ========== Render loop ========== */
 function renderLoop(ts){
   globalTime = ts / 1000;
   if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
@@ -657,7 +691,6 @@ function renderLoop(ts){
   requestAnimationFrame(renderLoop);
 }
 
-/* ========== Input ========== */
 function setDir(nx, ny){
   if (nx === -dx && ny === -dy) return;
   dx = nx; dy = ny;
@@ -684,64 +717,7 @@ canvas.addEventListener('touchend', e=>{
   else { if (dys > 0) setDir(0,1); else setDir(0,-1); }
 }, {passive:true});
 
-/* ========== Overlays ========== */
-btnRestart.addEventListener('click', ()=> initGame());
-
-/* ========== ЛИДЕРБОРД: интеграция с Google Apps Script (добавлено) ========== */
-function getPlayerName(){
-  let name = localStorage.getItem('hp_player_name');
-  if (!name) {
-    name = prompt('Как тебя подписать в таблице лидеров?') || 'Игрок';
-    name = name.trim().slice(0, 40);
-    localStorage.setItem('hp_player_name', name);
-  }
-  return name;
-}
-
-function getTelegramIdOrNull(){
-  const tg = window.Telegram?.WebApp;
-  const u = tg?.initDataUnsafe?.user;
-  return u?.id ? String(u.id) : '';
-}
-
-async function submitScoreSimple(score){
-  // send to Google Apps Script (existing)
-  const username = getPlayerName();
-  const tg_id = getTelegramIdOrNull();
-  try {
-    await fetch(LB_URL, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ username, score, tg_id })
-    });
-  } catch(e){
-    console.warn('LB_URL post failed', e);
-  }
-
-  // also send to LeadTeh incoming webhook (tg_id, username, score)
-  try {
-    // LeadTeh webhook expects fields like tg_id, username, score (as configured)
-    await fetch(LEADTEH_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tg_id: tg_id || '',
-        username: username || '',
-        score: Number(score) || 0
-      })
-    });
-  } catch(e){
-    console.warn('LeadTeh webhook post failed', e);
-  }
-}
-
-async function fetchLeaderboardSimple(){
-  const res = await fetch(LB_URL);
-  if (!res.ok) throw new Error('LB fetch failed');
-  return res.json();
-}
-
-// overlay logic
+/* overlays */
 const lbModal = document.getElementById('leaderboardModal');
 const lbList  = document.getElementById('lbList');
 const lbClose = document.getElementById('lbClose');
@@ -764,10 +740,15 @@ function openLeaderboard(top=[], meName=null, myTgId=''){
 lbClose?.addEventListener('click', ()=> lbModal.hidden = true);
 lbModal?.addEventListener('click', e=>{ if(e.target===lbModal) lbModal.hidden=true; });
 
-// кнопка "Таблица лидеров"
+const btnRestart = document.getElementById('btnRestart');
+const btnShare = document.getElementById('btnShare');
+btnRestart.addEventListener('click', ()=> initGame());
+
 btnShare.addEventListener('click', async ()=>{
   try {
-    const data = await fetchLeaderboardSimple();
+    const res = await fetch(LB_URL);
+    if (!res.ok) throw new Error('LB fetch failed');
+    const data = await res.json();
     openLeaderboard(data.top || [], localStorage.getItem('hp_player_name'), getTelegramIdOrNull());
   } catch(e){
     alert('Не удалось загрузить таблицу :(');
