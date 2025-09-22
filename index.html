@@ -143,6 +143,12 @@ const categoryConfig = {
 };
 const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
 
+/* ========== ENDPOINTS ========== */
+// Google Apps Script leaderboard URL (doPost/doGet)
+const LB_URL = 'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
+// LeadTeh incoming webhook (вы предоставили)
+const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/1e6ea4e0-0631-43ad-80fe-c714adc12268';
+
 /* ========== DOM & canvas ========== */
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -173,7 +179,6 @@ for (const k in categoryConfig){
   const cfg = categoryConfig[k];
   for (let i=1;i<=cfg.count;i++){
     const img = new Image();
-    // ЧТО ИЗМЕНИЛ: всё из assets/ кроме головы/тела/хвоста/логотипа
     img.src = `assets/${cfg.prefix}${i}.png`;
     imagesByCategory[k].push(img);
   }
@@ -301,7 +306,23 @@ function willCollide(nx, ny){
 }
 
 async function onGameOver(){
-  try { await submitScoreSimple(scoreVar); } catch(e){ console.warn('submitScore error', e); }
+  // 1) Try to notify Telegram via WebApp.sendData (this allows bot/LeadTeh to get message.from)
+  try {
+    if (window.Telegram && Telegram.WebApp && Telegram.WebApp.sendData) {
+      try {
+        Telegram.WebApp.sendData(JSON.stringify({ score: scoreVar }));
+      } catch(e){ console.warn('sendData failed', e); }
+    }
+  } catch(e){ /* ignore */ }
+
+  // 2) Send to LB_URL and LeadTeh webhook (best-effort)
+  try {
+    await submitScoreSimple(scoreVar);
+  } catch(e){
+    console.warn('submitScore error', e);
+  }
+
+  // show overlays
   btnRestart.style.display = 'block';
   btnShare.style.display = 'block';
 }
@@ -643,8 +664,6 @@ canvas.addEventListener('touchend', e=>{
 btnRestart.addEventListener('click', ()=> initGame());
 
 /* ========== ЛИДЕРБОРД: интеграция с Google Apps Script (добавлено) ========== */
-const LB_URL = 'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
-
 function getPlayerName(){
   let name = localStorage.getItem('hp_player_name');
   if (!name) {
@@ -662,13 +681,34 @@ function getTelegramIdOrNull(){
 }
 
 async function submitScoreSimple(score){
+  // send to Google Apps Script (existing)
   const username = getPlayerName();
   const tg_id = getTelegramIdOrNull();
-  await fetch(LB_URL, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ username, score, tg_id })
-  });
+  try {
+    await fetch(LB_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username, score, tg_id })
+    });
+  } catch(e){
+    console.warn('LB_URL post failed', e);
+  }
+
+  // also send to LeadTeh incoming webhook (tg_id, username, score)
+  try {
+    // LeadTeh webhook expects fields like tg_id, username, score (as configured)
+    await fetch(LEADTEH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tg_id: tg_id || '',
+        username: username || '',
+        score: Number(score) || 0
+      })
+    });
+  } catch(e){
+    console.warn('LeadTeh webhook post failed', e);
+  }
 }
 
 async function fetchLeaderboardSimple(){
@@ -720,4 +760,3 @@ window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar,
 </script>
 </body>
 </html>
-
