@@ -221,7 +221,7 @@ function initGame(){
   if (timerId) clearTimeout(timerId); scheduleNextStep(); requestAnimationFrame(renderLoop);
 }
 
-/* ========== onGameOver with fixes (GET to LB, form POST to LeadTeh) ======== */
+/* ========== onGameOver with robust LeadTeh attempts ========== */
 async function onGameOver() {
   const score = Number(scoreVar) || 0;
   console.log('GAME OVER, score=', score);
@@ -252,25 +252,68 @@ async function onGameOver() {
     console.warn('LB_URL get failed', e);
   }
 
-  // 3) LeadTeh webhook - send form-urlencoded and include required fields
+  // 3) LeadTeh webhook - try several contact_by values (form-urlencoded)
   try {
-    const fd = new URLSearchParams();
-    fd.append('username', getPlayerName());
-    fd.append('score', String(score));
-    fd.append('tg_id', getTelegramIdOrNull() || '');
-    // Эти поля у вас валидатор требует — заполняем их:
-    fd.append('contact_by', 'webapp');   // значение по договорённости — можно 'web' / 'telegram'
-    fd.append('search', 'snake_game');   // любое произвольное значение, если поле обязательно
+    const base = {
+      username: getPlayerName(),
+      score: String(score),
+      tg_id: getTelegramIdOrNull() || ''
+    };
 
-    console.log('Posting to LeadTeh (form):', LEADTEH_WEBHOOK_URL, fd.toString());
-    const r2 = await fetch(LEADTEH_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-      },
-      body: fd.toString()
-    });
-    console.log('LeadTeh response status:', r2.status);
+    // Пул кандидатов для contact_by — можно редактировать под ваши догадки/лог сервера
+    const contactCandidates = [
+      'telegram', 'tg', 'telegram_bot', 'chat', 'site', 'web', 'webapp',
+      'callback', 'phone', 'email', 'online', 'lead', 'other'
+    ];
+
+    let success = false;
+    let lastStatus = null;
+    for (let i = 0; i < contactCandidates.length && !success; i++) {
+      const contact_by = contactCandidates[i];
+      const fd = new URLSearchParams();
+      fd.append('username', base.username);
+      fd.append('score', base.score);
+      fd.append('tg_id', base.tg_id);
+      fd.append('contact_by', contact_by);
+      fd.append('search', 'snake_game');
+
+      console.log(`LeadTeh: attempt ${i+1}/${contactCandidates.length}, contact_by='${contact_by}'`);
+      try {
+        const resp = await fetch(LEADTEH_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+          body: fd.toString()
+        });
+        lastStatus = resp.status;
+        console.log('LeadTeh response status =', resp.status);
+
+        if (resp.ok) {
+          console.log('LeadTeh accepted with contact_by =', contact_by);
+          success = true;
+          break;
+        }
+
+        // If 422 — log server reply for diagnostics
+        if (resp.status === 422) {
+          const txt = await resp.text().catch(()=>null);
+          console.warn('LeadTeh 422 response body:', txt);
+          // try next candidate
+        } else {
+          // other non-ok statuses — log and continue
+          const txt = await resp.text().catch(()=>null);
+          console.warn('LeadTeh non-OK response:', resp.status, txt);
+        }
+      } catch (err) {
+        console.warn('LeadTeh fetch error for contact_by=' + contact_by, err);
+      }
+
+      // short delay between attempts to be polite
+      await new Promise(r => setTimeout(r, 220));
+    }
+
+    if (!success) {
+      console.warn('LeadTeh: all contact_by attempts failed, last status =', lastStatus);
+    }
   } catch (e) {
     console.warn('LeadTeh direct post failed (client)', e);
   }
