@@ -82,7 +82,7 @@ const MIN_STEP = 25, SMOOTH_LERP = 0.14;
 
 /* ===== ENDPOINTS ===== */
 const LB_URL = 'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
-const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/1e6ea4e0-0631-43ad-80fe-c714adc12268'; // kept for reference but not called directly (CORS)
+const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/1e6ea4e0-0631-43ad-80fe-c714adc12268';
 
 /* ===== DOM ===== */
 const canvas = document.getElementById('game');
@@ -221,54 +221,61 @@ function initGame(){
   if (timerId) clearTimeout(timerId); scheduleNextStep(); requestAnimationFrame(renderLoop);
 }
 
-/* ===== Submission helpers (fixed to avoid CORS) ===== */
-
-/**
- * Submit score to Google Apps Script via GET query string.
- * Using GET avoids preflight CORS in many setups.
- * Also attempt to notify the bot via Telegram.WebApp.sendData (if available).
- */
-function submitScoreNoCors(score){
-  const username = getPlayerName();
-  const tg_id = getTelegramIdOrNull();
-  // 1) Send to Telegram WebApp (so bot/LeadTeh receives it via update.web_app_data)
-  try {
-    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
-      const payload = { score: Number(score) || 0, username: username || '', tg_id: tg_id || '' };
-      console.log('Telegram.WebApp.sendData ->', payload);
-      Telegram.WebApp.sendData(JSON.stringify(payload));
-      // note: Telegram will POST this to your bot's webhook; your LeadTeh scenario should capture it
-    } else {
-      console.log('Telegram.WebApp.sendData not available in this environment.');
-    }
-  } catch (e){
-    console.warn('sendData failed', e);
-  }
-
-  // 2) Fire-and-forget GET to LB_URL to record locally via Apps Script (avoid CORS preflight).
-  try {
-    if (LB_URL) {
-      const q = `?username=${encodeURIComponent(username||'')}&score=${encodeURIComponent(Number(score)||0)}&tg_id=${encodeURIComponent(tg_id||'')}&ts=${Date.now()}`;
-      const url = LB_URL + q;
-      console.log('Sending GET to LB_URL (no-preflight):', url);
-      // use mode:'no-cors' so request won't be blocked by CORS preflight;
-      // response won't be readable in no-cors mode, but server still receives the request.
-      fetch(url, { method: 'GET', mode: 'no-cors' }).catch(e => console.warn('LB_URL GET failed', e));
-    }
-  } catch (e) {
-    console.warn('LB_URL attempt failed', e);
-  }
-}
-
-/* ========== NEW onGameOver (замена) ========== */
+/* ========== onGameOver with fixes (GET to LB, form POST to LeadTeh) ======== */
 async function onGameOver() {
   const score = Number(scoreVar) || 0;
   console.log('GAME OVER, score=', score);
 
-  // primary reliable channel: Telegram.WebApp.sendData + Apps Script GET
-  submitScoreNoCors(score);
+  // 1) Telegram WebApp (if inside TG)
+  try {
+    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
+      const payload = { score, ts: Date.now() };
+      console.log('calling Telegram.WebApp.sendData', payload);
+      Telegram.WebApp.sendData(JSON.stringify(payload));
+    } else {
+      console.warn('Telegram.WebApp.sendData not available in this environment.');
+    }
+  } catch (e) {
+    console.warn('sendData error', e);
+  }
 
-  // show UI controls
+  // 2) Google Apps Script (LB_URL) - use GET to avoid preflight
+  try {
+    const username = encodeURIComponent(getPlayerName());
+    const tg = encodeURIComponent(getTelegramIdOrNull() || '');
+    const q = `?username=${username}&score=${encodeURIComponent(String(score))}&tg_id=${tg}`;
+    const url = LB_URL + q;
+    console.log('Sending GET to LB_URL (no-preflight):', url);
+    const res = await fetch(url, { method: 'GET', credentials: 'omit' });
+    console.log('LB_URL response status:', res.status);
+  } catch (e) {
+    console.warn('LB_URL get failed', e);
+  }
+
+  // 3) LeadTeh webhook - send form-urlencoded and include required fields
+  try {
+    const fd = new URLSearchParams();
+    fd.append('username', getPlayerName());
+    fd.append('score', String(score));
+    fd.append('tg_id', getTelegramIdOrNull() || '');
+    // Эти поля у вас валидатор требует — заполняем их:
+    fd.append('contact_by', 'webapp');   // значение по договорённости — можно 'web' / 'telegram'
+    fd.append('search', 'snake_game');   // любое произвольное значение, если поле обязательно
+
+    console.log('Posting to LeadTeh (form):', LEADTEH_WEBHOOK_URL, fd.toString());
+    const r2 = await fetch(LEADTEH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body: fd.toString()
+    });
+    console.log('LeadTeh response status:', r2.status);
+  } catch (e) {
+    console.warn('LeadTeh direct post failed (client)', e);
+  }
+
+  // 4) show overlays
   btnRestart.style.display = 'block';
   btnShare.style.display = 'block';
 }
@@ -405,3 +412,4 @@ window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar,
 </script>
 </body>
 </html>
+
