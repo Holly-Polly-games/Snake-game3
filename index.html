@@ -81,8 +81,12 @@ const SPEED_MULT_BASE = 0.975, EXTRA_STEP_PCT = 0.003, SPEED_MULT_COMBINED = SPE
 const MIN_STEP = 25, SMOOTH_LERP = 0.14;
 
 /* ===== ENDPOINTS ===== */
-const LB_URL = 'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
-const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/1e6ea4e0-0631-43ad-80fe-c714adc12268';
+const LB_URL =
+  'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
+
+/* 👇 новый адрес LeadTeh 👇 */
+const LEADTEH_WEBHOOK_URL =
+  'https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e';
 
 /* ===== DOM ===== */
 const canvas = document.getElementById('game');
@@ -92,8 +96,17 @@ const btnRestart = document.getElementById('btnRestart');
 const btnShare = document.getElementById('btnShare');
 
 /* ===== Telegram WebApp init ===== */
-function initTelegramWebApp(){ try{ if(window.Telegram?.WebApp){ Telegram.WebApp.ready?.(); } }catch(e){ console.warn(e);} }
-initTelegramWebApp(); window.addEventListener('load', initTelegramWebApp);
+function initTelegramWebApp() {
+  try {
+    if (window.Telegram?.WebApp) {
+      Telegram.WebApp.ready?.();
+    }
+  } catch (e) {
+    console.warn(e);
+  }
+}
+initTelegramWebApp();
+window.addEventListener('load', initTelegramWebApp);
 
 /* helpers */
 function getPlayerName(){
@@ -455,4 +468,5 @@ window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar,
 </script>
 </body>
 </html>
+
 
