@@ -344,14 +344,7 @@ function initGame(){
   requestAnimationFrame(renderLoop);
 }
 
-/* ========== Step logic ========== */
-function willCollide(nx, ny){
-  if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
-  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
-  return false;
-}
-
-/* ==== DEBUG overlay helpers ==== */
+/* ========== DEBUG overlay helpers & LeadTeh sender ========== */
 const $dbg = document.getElementById('debugOverlay');
 const $dbgText = document.getElementById('dbgText');
 const $dbgSend = document.getElementById('dbgSend');
@@ -369,15 +362,38 @@ function dbgAppend(line){
 }
 $dbgHide?.addEventListener('click', ()=> $dbg.style.display='none');
 
-function trySendBeacon(url, urlSearchParams){
-  try{
-    if (!navigator.sendBeacon) return false;
-    const blob = new Blob([urlSearchParams.toString()], { type:'application/x-www-form-urlencoded; charset=UTF-8' });
-    return navigator.sendBeacon(url, blob);
-  }catch(_){ return false; }
+/* Универсальная отправка в LeadTeh JSON'ом: beacon -> fetch */
+async function sendLeadTehJSON(data){
+  const json = JSON.stringify(data);
+
+  // 1) Пытаемся navigator.sendBeacon (часто надёжнее в WebView)
+  try {
+    if (navigator.sendBeacon) {
+      const ok = navigator.sendBeacon(LEADTEH_URL, new Blob([json], { type: 'application/json' }));
+      if (ok) return { via:'beacon', ok:true };
+    }
+  } catch(_) {}
+
+  // 2) Фолбэк на fetch
+  try {
+    const res = await fetch(LEADTEH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: json
+    });
+    return { via:'fetch', ok: res.ok, status: res.status };
+  } catch (e) {
+    return { via:'fetch', ok:false, error: String(e && e.message || e) };
+  }
 }
 
 /* ========== GAME OVER: отправка в LeadTeh + debug ======= */
+function willCollide(nx, ny){
+  if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
+  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
+  return false;
+}
+
 async function onGameOver(){
   const score = Number(scoreVar) || 0;
   const username = getPlayerName();
@@ -387,26 +403,13 @@ async function onGameOver(){
   dbgShow({ phase:'GAME_OVER', inTelegram: isInTelegramWebApp(), tg_id, username, score, ua: navigator.userAgent });
 
   if (tg_id){
-    const params = new URLSearchParams(data);
-    const ok = trySendBeacon(LEADTEH_URL, params);
-    if (ok) dbgAppend('LeadTeh: sendBeacon=true');
-    if (!ok){
-      try{
-        const res = await fetch(LEADTEH_URL, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8' },
-          body: params
-        });
-        dbgAppend('LeadTeh fetch status: ' + res.status);
-      }catch(e){
-        dbgAppend('LeadTeh fetch error: ' + (e?.message || e));
-      }
-    }
+    const r = await sendLeadTehJSON(data);
+    dbgAppend(`LeadTeh: ${r.via} -> ${r.ok ? 'OK' : ('FAIL ' + (r.status || r.error || ''))}`);
   } else {
     dbgAppend('[LeadTeh] Пропущено: tg_id пустой (не из Telegram WebApp?)');
   }
 
-  // (опционально) Google Apps Script лидерборд
+  // (опционально) Google Apps Script лидерборд — может фейлиться из WebView (CORS)
   try { await submitScoreSimple(score); } catch(e){ dbgAppend('GAS error: ' + (e?.message || e)); }
 
   btnRestart.style.display = 'block';
@@ -773,24 +776,16 @@ btnShare.addEventListener('click', async ()=>{
   }
 });
 
-/* ===== DEBUG overlay кнопка «Тест POST» ===== */
+/* ===== DEBUG overlay кнопка «Тест POST» (JSON) ===== */
 document.getElementById('dbgSend')?.addEventListener('click', async ()=>{
   const username = getPlayerName();
   const tg_id = getTelegramIdOrNull();
   const score = 1234;
-  const payload = new URLSearchParams({ username, score: String(score), tg_id, contact_by:'webapp', search:'snake_game' });
+  const data = { username, score: String(score), tg_id, contact_by:'webapp', search:'snake_game' };
 
   dbgAppend({event:'dbgSend click', inTelegram:isInTelegramWebApp(), tg_id, username, score});
-  const ok = trySendBeacon(LEADTEH_URL, payload);
-  if (ok) dbgAppend('sendBeacon: true (отправлено)');
-  else {
-    try {
-      const res = await fetch(LEADTEH_URL, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'}, body: payload });
-      dbgAppend('fetch status: ' + res.status);
-    } catch(e){
-      dbgAppend('fetch error: ' + (e?.message||e));
-    }
-  }
+  const r = await sendLeadTehJSON(data);
+  dbgAppend(`Test: ${r.via} -> ${r.ok ? 'OK' : ('FAIL ' + (r.status || r.error || ''))}`);
 });
 
 /* ========== Start ========== */
@@ -817,4 +812,3 @@ window._hp = Object.assign(window._hp || {}, {
 </script>
 </body>
 </html>
-
