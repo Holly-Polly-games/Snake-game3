@@ -66,7 +66,7 @@
 
 <script>
 /* ====== Настройки ====== */
-const LB_URL = 'https://script.google.com/macros/s/AKfycbwWwEFARyVpWEqLUcQ5FCAUUy6EDf8xXxVdC1FuyaYfGkySRK6e7Ryq_nM2X2RWn3YZ/exec'; // <--- замените на URL вашего GAS Web App
+const LB_URL = 'https://script.google.com/macros/s/AKfycby_HWJOkI67NTArp_y0gXcc82mIgUC-vesYMoo6jkjsGrIo2T4XcpNLBp9j4WATVakz/exec'; // ваш GAS /exec
 const COLS = 12, ROWS = 22, BASE_STEP_MS = 120;
 let stepDelay = Math.round(BASE_STEP_MS * 1.20);
 
@@ -74,322 +74,156 @@ let stepDelay = Math.round(BASE_STEP_MS * 1.20);
 (function tgReady(){
   try{ if (Telegram?.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand?.(); } }catch(e){}
 })();
-function getTgUser(){
-  const u = Telegram?.WebApp?.initDataUnsafe?.user;
-  return u || null;
-}
-function getTgId(){
-  const u = getTgUser();
-  return u?.id ? String(u.id) : '';
-}
+function getTgUser(){ return Telegram?.WebApp?.initDataUnsafe?.user || null; }
+function getTgId(){ const u=getTgUser(); return u?.id ? String(u.id) : ''; }
 function getTgUsername(){
-  const u = getTgUser();
-  if (!u) return '';
+  const u=getTgUser(); if (!u) return '';
   if (u.username) return '@'+u.username;
-  const fn = u.first_name || '', ln = u.last_name || '';
-  const combo = (fn + ' ' + ln).trim();
-  return combo || 'Игрок';
+  const fn=u.first_name||'', ln=u.last_name||''; return (fn+' '+ln).trim() || 'Игрок';
 }
 
-/* ====== Canvas ====== */
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const container = document.getElementById('container');
-const btnRestart = document.getElementById('btnRestart');
-const btnShare = document.getElementById('btnShare');
-let tileSize, canvasW, canvasH;
+/* ====== Canvas / игра (ваш код без изменений)… ====== */
+const canvas=document.getElementById('game'); const ctx=canvas.getContext('2d');
+const container=document.getElementById('container'); const btnRestart=document.getElementById('btnRestart'); const btnShare=document.getElementById('btnShare');
+let tileSize,canvasW,canvasH;
+function resizeCanvas(){ const maxW=Math.min(innerWidth-40,960); const maxH=innerHeight-220; const size=Math.floor(Math.min(maxW/COLS,maxH/ROWS));
+  tileSize=Math.max(20,size); canvasW=tileSize*COLS; canvasH=tileSize*ROWS; canvas.width=canvasW; canvas.height=canvasH; container.style.width=canvasW+'px'; container.style.height=canvasH+'px'; }
+addEventListener('resize',resizeCanvas); resizeCanvas();
 
-function resizeCanvas(){
-  const maxW = Math.min(window.innerWidth - 40, 960);
-  const maxH = window.innerHeight - 220;
-  const size = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
-  tileSize = Math.max(20, size);
-  canvasW = tileSize * COLS;
-  canvasH = tileSize * ROWS;
-  canvas.width = canvasW;
-  canvas.height = canvasH;
-  container.style.width = canvasW + 'px';
-  container.style.height = canvasH + 'px';
-}
-addEventListener('resize', resizeCanvas); resizeCanvas();
+const categoryConfig={ balzam:{prefix:'balzam',count:8,points:50,w:1,h:1,weight:1}, cream:{prefix:'Cream',count:3,points:100,w:1,h:2,weight:1}, shampoo:{prefix:'Shampoo',count:3,points:150,w:1,h:2,weight:1}, tip:{prefix:'tip',count:2,points:200,w:1,h:2,weight:0.35} };
+const hairsprayConfig={ prefix:'HairSpray', count:3, points:300, w:1, h:2 };
+const imagesByCategory={}; for (const k in categoryConfig){ imagesByCategory[k]=[]; const cfg=categoryConfig[k]; for(let i=1;i<=cfg.count;i++){ const img=new Image(); img.src=`assets/${cfg.prefix}${i}.png`; imagesByCategory[k].push(img);} }
+const hairsprayImages=[]; for(let i=1;i<=hairsprayConfig.count;i++){ const img=new Image(); img.src=`assets/${hairsprayConfig.prefix}${i}.png`; hairsprayImages.push(img); }
+const headImg=new Image(); headImg.src='golova.png'; const telo1=new Image(); telo1.src='telo1.png'; const telo2=new Image(); telo2.src='telo2.png';
 
-/* ====== Картинки ====== */
-const categoryConfig = {
-  balzam:   {prefix:'balzam',    count:8,  points:50,  w:1, h:1, weight: 1},
-  cream:    {prefix:'Cream',     count:3,  points:100, w:1, h:2, weight: 1},
-  shampoo:  {prefix:'Shampoo',   count:3,  points:150, w:1, h:2, weight: 1},
-  tip:      {prefix:'tip',       count:2,  points:200, w:1, h:2, weight: 0.35}
-};
-const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
+let snake=[], dx=1, dy=0, food=null, extraFood=null, particles=[], gameOver=false, timerId=null, eatenSinceSpeedup=0, totalEaten=0, scoreVar=0, globalTime=0, pendingHairspray=false;
+const FOOD_SCALE=2.42, MAX_OVERFLOW_PCT=0.65, MAX_OVERFLOW_TILES=0.9, HEARTS_BASE=12, HEARTS_COUNT=Math.max(1,Math.round(HEARTS_BASE*0.6)), SPEED_MULT_BASE=0.975, EXTRA_STEP_PCT=0.003, SPEED_MULT_COMBINED=SPEED_MULT_BASE-EXTRA_STEP_PCT, MIN_STEP=25, SMOOTH_LERP=0.14;
 
-const imagesByCategory = {};
-for (const k in categoryConfig){
-  imagesByCategory[k] = [];
-  const cfg = categoryConfig[k];
-  for (let i=1;i<=cfg.count;i++){
-    const img = new Image();
-    img.src = `assets/${cfg.prefix}${i}.png`;
-    imagesByCategory[k].push(img);
-  }
-}
-const hairsprayImages = [];
-for (let i=1;i<=hairsprayConfig.count;i++){
-  const img = new Image();
-  img.src = `assets/${hairsprayConfig.prefix}${i}.png`;
-  hairsprayImages.push(img);
-}
-const headImg = new Image(); headImg.src = 'golova.png';
-const telo1 = new Image(); telo1.src = 'telo1.png';
-const telo2 = new Image(); telo2.src = 'telo2.png';
-
-/* ====== Состояние ====== */
-let snake = [];
-let dx = 1, dy = 0;
-let food = null, extraFood = null;
-let particles = [];
-let gameOver = false, timerId = null;
-let eatenSinceSpeedup = 0, totalEaten = 0, scoreVar = 0, globalTime = 0;
-const FOOD_SCALE = 2.42, MAX_OVERFLOW_PCT = 0.65, MAX_OVERFLOW_TILES = 0.9;
-const HEARTS_BASE = 12, HEARTS_COUNT = Math.max(1, Math.round(HEARTS_BASE * 0.6));
-const SPEED_MULT_BASE = 0.975, EXTRA_STEP_PCT = 0.003;
-const SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT, MIN_STEP = 25, SMOOTH_LERP = 0.14;
-let pendingHairspray = false;
-
-/* ====== Утилиты ====== */
 function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
-function rectFree(x,y,w,h){
-  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
-  for (let sx=x; sx<x+w; sx++) for (let sy=y; sy<y+h; sy++) if(pointOnSnake(sx,sy)) return false;
-  return true;
-}
-function lerp(a,b,t){ return a + (b-a) * t; }
-function chooseCategory(){
-  const keys = Object.keys(categoryConfig); const pool=[];
-  for (const k of keys){ const w=categoryConfig[k].weight; for(let i=0;i<Math.max(1,Math.round(w*10));i++) pool.push(k); }
-  return pool[randInt(0, pool.length-1)];
-}
+function pointOnSnake(x,y){ return snake.some(s=>s.x===x && s.y===y); }
+function rectFree(x,y,w,h){ if(x<0||y<0||x+w>COLS||y+h>ROWS) return false; for(let sx=x;sx<x+w;sx++) for(let sy=y;sy<y+h;sy++) if(pointOnSnake(sx,sy)) return false; return true; }
+function lerp(a,b,t){ return a + (b-a)*t; }
+function chooseCategory(){ const pool=[]; for (const k of Object.keys(categoryConfig)){ const times=Math.max(1,Math.round(categoryConfig[k].weight*10)); for(let i=0;i<times;i++) pool.push(k);} return pool[randInt(0,pool.length-1)]; }
 
-/* ====== Еда ====== */
-function placeFood(){
-  const maxAttempts = 1000; let attempts=0; food = null;
-  while(attempts++ < maxAttempts){
-    const cat = chooseCategory(), cfg = categoryConfig[cat];
-    const w=cfg.w, h=cfg.h, x=randInt(0, COLS-w), y=randInt(0, ROWS-h);
-    if (!rectFree(x,y,w,h)) continue;
-    const imgs = imagesByCategory[cat], img = imgs.length ? imgs[randInt(0,imgs.length-1)] : null;
-    food = {x,y,cat,img,points:cfg.points,w,h}; break;
-  }
-  if (!food){
-    outer: for (let yy=0; yy<ROWS; yy++) for (let xx=0; xx<COLS; xx++){
-      if (!pointOnSnake(xx,yy)){ const imgs=imagesByCategory['balzam']; food={x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1}; break outer; }
-    }
-  }
-  if (pendingHairspray){
-    const wH=hairsprayConfig.w, hH=hairsprayConfig.h; let placed=false, attempts2=0;
-    while(attempts2++<800 && !placed){
-      const x=randInt(0,COLS-wH), y=randInt(0,ROWS-hH);
-      if (!rectFree(x,y,wH,hH)) continue;
-      if (!(x + wH <= food.x || x >= food.x + food.w || y + hH <= food.y || y >= food.y + food.h)) continue;
-      const img=hairsprayImages.length?hairsprayImages[randInt(0,hairsprayImages.length-1)]:null;
-      extraFood={x,y,cat:'hairspray',img,points:hairsprayConfig.points,w:wH,h:hH,expiresAt:performance.now()+3000}; placed=true;
-    }
-    pendingHairspray=false;
-  }
-}
+function placeFood(){ const maxAttempts=1000; let attempts=0; food=null;
+  while(attempts++<maxAttempts){ const cat=chooseCategory(), cfg=categoryConfig[cat]; const w=cfg.w,h=cfg.h,x=randInt(0,COLS-w),y=randInt(0,ROWS-h);
+    if(!rectFree(x,y,w,h)) continue; const imgs=imagesByCategory[cat]; const img=imgs.length?imgs[randInt(0,imgs.length-1)]:null; food={x,y,cat,img,points:cfg.points,w,h}; break; }
+  if(!food){ outer: for(let yy=0;yy<ROWS;yy++) for(let xx=0;xx<COLS;xx++){ if(!pointOnSnake(xx,yy)){ const imgs=imagesByCategory['balzam']; food={x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1}; break outer; } } }
+  if(pendingHairspray){ const wH=hairsprayConfig.w, hH=hairsprayConfig.h; let placed=false, attempts2=0;
+    while(attempts2++<800 && !placed){ const x=randInt(0,COLS-wH), y=randInt(0,ROWS-hH); if(!rectFree(x,y,wH,hH)) continue;
+      if(!(x+wH<=food.x||x>=food.x+food.w||y+hH<=food.y||y>=food.y+food.h)) continue; const img=hairsprayImages.length?hairsprayImages[randInt(0,hairsprayImages.length-1)]:null;
+      extraFood={x,y,cat:'hairspray',img,points:hairsprayConfig.points,w:wH,h:hH,expiresAt:performance.now()+3000}; placed=true; } pendingHairspray=false; } }
 
-/* ====== Сегменты ====== */
-function createSegment(x,y){ return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 }; }
+function createSegment(x,y){ return { x, y, px:x*tileSize+tileSize/2, py:y*tileSize+tileSize/2 }; }
 
-/* ====== Инициализация ====== */
-function initGame(){
-  const cx=Math.floor(COLS/2), cy=Math.floor(ROWS/2);
-  snake=[ createSegment(cx,cy), createSegment(cx-1,cy), createSegment(cx-2,cy) ];
-  dx=1; dy=0; stepDelay=Math.round(BASE_STEP_MS*1.20);
-  food=null; extraFood=null; pendingHairspray=false; particles=[]; gameOver=false;
-  eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
-  placeFood();
-  btnRestart.style.display='none'; btnShare.style.display='none';
-  if (timerId) clearTimeout(timerId);
-  scheduleNextStep();
-  requestAnimationFrame(renderLoop);
-}
+function initGame(){ const cx=Math.floor(COLS/2), cy=Math.floor(ROWS/2);
+  snake=[createSegment(cx,cy),createSegment(cx-1,cy),createSegment(cx-2,cy)];
+  dx=1; dy=0; stepDelay=Math.round(BASE_STEP_MS*1.20); food=null; extraFood=null; pendingHairspray=false; particles=[]; gameOver=false; eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
+  placeFood(); btnRestart.style.display='none'; btnShare.style.display='none'; if(timerId) clearTimeout(timerId); scheduleNextStep(); requestAnimationFrame(renderLoop); }
 
-/* ====== Рендер ====== */
-function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
-  ctx.save(); ctx.translate(cx,cy); ctx.rotate(rotation); ctx.globalAlpha=alpha;
-  ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fillStyle=fillStyle; ctx.fill(); ctx.restore();
-}
-function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
-  const desiredW=Math.round(areaW*FOOD_SCALE), desiredH=Math.round(areaH*FOOD_SCALE);
-  const allowedOverflowW=Math.min(Math.round(areaW*MAX_OVERFLOW_PCT), Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const allowedOverflowH=Math.min(Math.round(areaH*MAX_OVERFLOW_PCT), Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const maxAllowedW=areaW+allowedOverflowW, maxAllowedH=areaH+allowedOverflowH;
-  let drawW=Math.min(desiredW,maxAllowedW), drawH=Math.min(desiredH,maxAllowedH);
-  return {drawW, drawH, areaLeft, areaTop, areaW, areaH, maxAllowedW, maxAllowedH};
-}
-function drawSingleFood(it, nowSec){
-  if (!it) return;
-  const cellsW=it.w, cellsH=it.h, areaW=tileSize*cellsW, areaH=tileSize*cellsH, areaLeft=it.x*tileSize, areaTop=it.y*tileSize;
-  if (it.cat==='hairspray'){
-    const pulse=1+0.20*Math.sin(nowSec*4+it.x*1.7+it.y*0.9);
-    const cx=Math.round(areaLeft+areaW/2), cy=Math.round(areaTop+areaH/2+tileSize*0.08);
-    const base=Math.min(areaW,areaH), rx=Math.max(10,Math.round((base/2+12)*pulse)), ry=Math.max(8,Math.round((base/2+8)*pulse*0.82));
-    drawEllipseFilled(cx,cy,rx,ry,'rgba(255,235,0,0.98)',0.98);
-  }
-  if (it.img && it.img.complete && it.img.naturalWidth && it.img.naturalHeight){
-    const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH);
-    const iw=it.img.naturalWidth, ih=it.img.naturalHeight, aspect=iw/ih;
-    let drawW=c.drawW, drawH=Math.round(drawW/aspect);
-    if (drawH>c.maxAllowedH){ drawH=c.maxAllowedH; drawW=Math.round(drawH*aspect); }
-    const drawX=Math.round(areaLeft+(areaW-drawW)/2), drawY=Math.round(areaTop+(areaH-drawH)/2);
-    ctx.drawImage(it.img, drawX, drawY, drawW, drawH);
-  } else {
-    const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH);
-    const dw=Math.round(Math.min(c.drawW,c.maxAllowedW*0.95)), dh=Math.round(dw/1.2);
-    const dx=Math.round(areaLeft+(areaW-dw)/2), dy=Math.round(areaTop+(areaH-dh)/2);
-    ctx.fillStyle='#ff6b6b'; ctx.fillRect(dx,dy,dw,dh);
-  }
-}
-function drawFood(nowSec){ drawSingleFood(food,nowSec); if (extraFood) drawSingleFood(extraFood,nowSec); }
+function drawEllipseFilled(cx,cy,rx,ry,fillStyle,alpha=1,rotation=0){ ctx.save(); ctx.translate(cx,cy); ctx.rotate(rotation); ctx.globalAlpha=alpha; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fillStyle=fillStyle; ctx.fill(); ctx.restore(); }
+function computeImageDrawRect(areaLeft,areaTop,areaW,areaH){ const desiredW=Math.round(areaW*FOOD_SCALE), desiredH=Math.round(areaH*FOOD_SCALE);
+  const allowedOverflowW=Math.min(Math.round(areaW*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
+  const allowedOverflowH=Math.min(Math.round(areaH*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
+  const maxAllowedW=areaW+allowedOverflowW, maxAllowedH=areaH+allowedOverflowH; let drawW=Math.min(desiredW,maxAllowedW), drawH=Math.min(desiredH,maxAllowedH);
+  return {drawW,drawH,areaLeft,areaTop,areaW,areaH,maxAllowedW,maxAllowedH}; }
+function drawSingleFood(it,nowSec){ if(!it) return; const cellsW=it.w,cellsH=it.h,areaW=tileSize*cellsW,areaH=tileSize*cellsH,areaLeft=it.x*tileSize,areaTop=it.y*tileSize;
+  if(it.cat==='hairspray'){ const pulse=1+0.20*Math.sin(nowSec*4+it.x*1.7+it.y*0.9); const cx=Math.round(areaLeft+areaW/2), cy=Math.round(areaTop+areaH/2+tileSize*0.08);
+    const base=Math.min(areaW,areaH), rx=Math.max(10,Math.round((base/2+12)*pulse)), ry=Math.max(8,Math.round((base/2+8)*pulse*0.82)); drawEllipseFilled(cx,cy,rx,ry,'rgba(255,235,0,0.98)',0.98); }
+  if(it.img && it.img.complete && it.img.naturalWidth && it.img.naturalHeight){ const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH); const iw=it.img.naturalWidth, ih=it.img.naturalHeight, aspect=iw/ih;
+    let drawW=c.drawW, drawH=Math.round(drawW/aspect); if(drawH>c.maxAllowedH){ drawH=c.maxAllowedH; drawW=Math.round(drawH*aspect); }
+    const drawX=Math.round(areaLeft+(areaW-drawW)/2), drawY=Math.round(areaTop+(areaH-drawH)/2); ctx.drawImage(it.img,drawX,drawY,drawW,drawH);
+  } else { const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH); const dw=Math.round(Math.min(c.drawW,c.maxAllowedW*0.95)), dh=Math.round(dw/1.2);
+    const dx=Math.round(areaLeft+(areaW-dw)/2), dy=Math.round(areaTop+(areaH-dh)/2); ctx.fillStyle='#ff6b6b'; ctx.fillRect(dx,dy,dw,dh); } }
+function drawFood(nowSec){ drawSingleFood(food,nowSec); if(extraFood) drawSingleFood(extraFood,nowSec); }
 
 function drawSnake(){
-  for (let i=0;i<snake.length;i++){ const s=snake[i], tx=s.x*tileSize+tileSize/2, ty=s.y*tileSize+tileSize/2; s.px=lerp(s.px,tx,SMOOTH_LERP); s.py=lerp(s.py,ty,SMOOTH_LERP); }
-  for (let i=1;i<snake.length;i++){
-    const s=snake[i], size=Math.max(6,Math.floor(tileSize*1.06));
-    if (i===snake.length-1){
-      if (telo2 && telo2.complete && telo2.naturalWidth){
-        const tail=snake[snake.length-1], prev=snake[snake.length-2], angle=Math.atan2(prev.py-tail.py, prev.px-tail.px);
-        ctx.save(); ctx.translate(tail.px,tail.py); ctx.rotate(angle+Math.PI/2);
-        let iw=telo2.naturalWidth, ih=telo2.naturalHeight, aspect=iw/ih; let dw=size, dh=size;
-        if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
-        ctx.drawImage(telo2,-dw/2,-dh/2,dw,dh); ctx.restore();
-      } else { ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(s.px,s.py,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill(); }
-    } else {
-      if (telo1 && telo1.complete && telo1.naturalWidth){
-        let iw=telo1.naturalWidth, ih=telo1.naturalHeight, aspect=iw/ih; let dw=size, dh=size;
-        if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
-        ctx.drawImage(telo1, Math.round(s.px-dw/2), Math.round(s.py-dh/2), dw, dh);
-      } else { ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(s.px,s.py,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill(); }
-    }
-  }
+  for(let i=0;i<snake.length;i++){ const s=snake[i], tx=s.x*tileSize+tileSize/2, ty=s.y*tileSize+tileSize/2; s.px=lerp(s.px,tx,SMOOTH_LERP); s.py=lerp(s.py,ty,SMOOTH_LERP); }
+  for(let i=1;i<snake.length;i++){ const s=snake[i], size=Math.max(6,Math.floor(tileSize*1.06));
+    if(i===snake.length-1){ if(telo2 && telo2.complete && telo2.naturalWidth){ const tail=snake[snake.length-1], prev=snake[snake.length-2], angle=Math.atan2(prev.py-tail.py,prev.px-tail.px);
+        ctx.save(); ctx.translate(tail.px,tail.py); ctx.rotate(angle+Math.PI/2); let iw=telo2.naturalWidth, ih=telo2.naturalHeight, aspect=iw/ih; let dw=size, dh=size;
+        if(dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect); ctx.drawImage(telo2,-dw/2,-dh/2,dw,dh); ctx.restore();
+      } else { ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(s.px,s.py,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill(); } }
+    else { if(telo1 && telo1.complete && telo1.naturalWidth){ let iw=telo1.naturalWidth, ih=telo1.naturalHeight, aspect=iw/ih; let dw=size, dh=size;
+        if(dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect); ctx.drawImage(telo1,Math.round(s.px-dw/2),Math.round(s.py-dh/2),dw,dh);
+      } else { ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(s.px,s.py,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill(); } } }
   const head=snake[0], hx=head.px, hy=head.py, headScale=1.42, headSize=Math.max(6,Math.floor(tileSize*headScale));
-  if (headImg && headImg.complete && headImg.naturalWidth){
-    const dirAngle=Math.atan2(dy,dx); ctx.save(); ctx.translate(hx,hy); ctx.rotate(dirAngle+Math.PI/2);
-    let iw=headImg.naturalWidth, ih=headImg.naturalHeight, aspect=iw/ih; let dw=headSize, dh=headSize;
-    if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
+  if(headImg && headImg.complete && headImg.naturalWidth){ const dirAngle=Math.atan2(dy,dx); ctx.save(); ctx.translate(hx,hy); ctx.rotate(dirAngle+Math.PI/2);
+    let iw=headImg.naturalWidth, ih=headImg.naturalHeight, aspect=iw/ih; let dw=headSize, dh=headSize; if(dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
     ctx.drawImage(headImg,-dw/2,-dh/2,dw,dh); ctx.restore();
-  } else {
-    ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(hx,hy,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill();
-    const eyeR=Math.max(2,Math.floor(tileSize/6)), ex=tileSize/4, ey=tileSize/6;
-    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(hx-ex,hy-ey,eyeR,0,Math.PI*2); ctx.arc(hx+ex,hy-ey,eyeR,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(hx-ex,hy-ey,Math.max(1,Math.floor(eyeR/2)),0,Math.PI*2);
-    ctx.arc(hx+ex,hy-ey,Math.max(1,Math.floor(eyeR/2)),0,Math.PI*2); ctx.fill();
-  }
-}
-function drawParticles(){
-  if (!particles.length) return; ctx.save();
-  for (let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    if (p.type==='emoji'){
-      ctx.globalAlpha=Math.max(0,p.life/p.maxLife);
-      ctx.font=`${Math.max(8,Math.floor(p.size))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", serif`;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(p.char, Math.round(p.x), Math.round(p.y)); ctx.globalAlpha=1;
-    } else {
-      ctx.globalAlpha=Math.max(0,p.life/p.maxLife); ctx.fillStyle=p.color||'#fff';
-      ctx.beginPath(); ctx.arc(Math.round(p.x),Math.round(p.y),p.r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
-    }
-  }
-  ctx.restore();
-}
+  } else { ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(hx,hy,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill();
+    const eyeR=Math.max(2,Math.floor(tileSize/6)), ex=tileSize/4, ey=tileSize/6; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(hx-ex,hy-ey,eyeR,0,Math.PI*2); ctx.arc(hx+ex,hy-ey,eyeR,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(hx-ex,hy-ey,Math.max(1,Math.floor(eyeR/2)),0,Math.PI*2); ctx.arc(hx+ex,hy-ey,Math.max(1,Math.floor(eyeR/2)),0,Math.PI*2); ctx.fill(); } }
+
+function drawParticles(){ if(!particles.length) return; ctx.save();
+  for(let i=particles.length-1;i>=0;i--){ const p=particles[i];
+    if(p.type==='emoji'){ ctx.globalAlpha=Math.max(0,p.life/p.maxLife);
+      ctx.font=`${Math.max(8,Math.floor(p.size))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.char,Math.round(p.x),Math.round(p.y)); ctx.globalAlpha=1;
+    } else { ctx.globalAlpha=Math.max(0,p.life/p.maxLife); ctx.fillStyle=p.color||'#fff'; ctx.beginPath(); ctx.arc(Math.round(p.x),Math.round(p.y),p.r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; } }
+  ctx.restore(); }
 function drawScore(){ ctx.save(); ctx.fillStyle='#000'; ctx.font=`${Math.max(14,Math.floor(tileSize*0.7))}px Futura, Arial, sans-serif`; ctx.textBaseline='top'; ctx.fillText('Счёт: '+scoreVar, Math.max(6,tileSize*0.15), Math.max(6,tileSize*0.12)); ctx.restore(); }
-function renderLoop(ts){
-  globalTime = ts/1000; if (extraFood && performance.now()>extraFood.expiresAt) extraFood=null;
-  ctx.clearRect(0,0,canvasW,canvasH); drawFood(globalTime); drawSnake(); drawParticles(); drawScore(); updateParticles(); requestAnimationFrame(renderLoop);
-}
-
-/* ====== Частицы ====== */
-function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
-  const cx=(cellX+cellsW/2)*tileSize, cy=(cellY+cellsH/2)*tileSize, char=(cat==='hairspray')?'⭐️':'❤️', SLOW_MULT=0.6;
-  for (let i=0;i<Math.max(3,HEARTS_COUNT);i++){
-    const angle=Math.random()*Math.PI*2, baseSpeed=0.6+Math.random()*1.6;
-    const vyBias=(cat==='hairspray')?-0.4-Math.random()*0.2:(Math.random()*0.4-0.2);
+function renderLoop(ts){ globalTime=ts/1000; if(extraFood && performance.now()>extraFood.expiresAt) extraFood=null;
+  ctx.clearRect(0,0,canvasW,canvasH); drawFood(globalTime); drawSnake(); drawParticles(); drawScore(); updateParticles(); requestAnimationFrame(renderLoop); }
+function spawnParticlesAt(cellX,cellY,cellsW,cellsH,cat){ const cx=(cellX+cellsW/2)*tileSize, cy=(cellY+cellsH/2)*tileSize, char=(cat==='hairspray')?'⭐️':'❤️', SLOW_MULT=0.6;
+  for(let i=0;i<Math.max(3,HEARTS_COUNT);i++){ const angle=Math.random()*Math.PI*2, baseSpeed=0.6+Math.random()*1.6, vyBias=(cat==='hairspray')?-0.4-Math.random()*0.2:(Math.random()*0.4-0.2);
     const life=40+Math.floor(Math.random()*40), size=tileSize*(0.45+Math.random()*0.8);
-    const vx=Math.cos(angle)*baseSpeed*(0.6+Math.random()*0.9)*SLOW_MULT;
-    const vy=(Math.sin(angle)*baseSpeed*(0.6+Math.random()*0.9)+vyBias)*SLOW_MULT;
-    particles.push({type:'emoji',char,x:cx+(Math.random()-0.5)*tileSize*0.2,y:cy+(Math.random()-0.5)*tileSize*0.2,vx,vy,size,life,maxLife:life});
-  }
-}
-function updateParticles(){ for (let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vx*=0.995; p.vy+=0.01; p.life--; if (p.life<=0) particles.splice(i,1); } }
+    const vx=Math.cos(angle)*baseSpeed*(0.6+Math.random()*0.9)*SLOW_MULT, vy=(Math.sin(angle)*baseSpeed*(0.6+Math.random()*0.9)+vyBias)*SLOW_MULT;
+    particles.push({type:'emoji',char,x:cx+(Math.random()-0.5)*tileSize*0.2,y:cy+(Math.random()-0.5)*tileSize*0.2,vx,vy,size,life,maxLife:life}); } }
+function updateParticles(){ for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vx*=0.995; p.vy+=0.01; p.life--; if(p.life<=0) particles.splice(i,1);} }
 
-/* ====== Игровая логика ====== */
-function willCollide(nx,ny){
-  if (nx<0||ny<0||nx>=COLS||ny>=ROWS) return true;
-  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
-  return false;
-}
-function performStep(){
-  if (gameOver) return;
-  const headGX=snake[0].x+dx, headGY=snake[0].y+dy;
-  if (willCollide(headGX,headGY)){ gameOver=true; onGameOver(); return; }
-  snake.unshift(createSegment(headGX, headGY));
+function willCollide(nx,ny){ if(nx<0||ny<0||nx>=COLS||ny>=ROWS) return true; for(let i=1;i<snake.length;i++) if(snake[i].x===nx && snake[i].y===ny) return true; return false; }
+function performStep(){ if(gameOver) return; const headGX=snake[0].x+dx, headGY=snake[0].y+dy;
+  if(willCollide(headGX,headGY)){ gameOver=true; onGameOver(); return; } snake.unshift(createSegment(headGX,headGY));
+  let ateExtra=false; if(extraFood){ if(headGX>=extraFood.x && headGX<extraFood.x+extraFood.w && headGY>=extraFood.y && headGY<extraFood.y+extraFood.h){
+      scoreVar+=extraFood.points; totalEaten++; eatenSinceSpeedup++; spawnParticlesAt(extraFood.x,extraFood.y,extraFood.w,extraFood.h,'hairspray'); extraFood=null; ateExtra=true; } }
+  let ateMain=false; if(food && !ateExtra){ if(headGX>=food.x && headGX<food.x+food.w && headGY>=food.y && headGY<food.y+food.h){
+      ateMain=true; totalEaten++; eatenSinceSpeedup++; scoreVar+=food.points; spawnParticlesAt(food.x,food.y,food.w,food.h,food.cat); pendingHairspray=(Math.random()<0.10); placeFood(); } }
+  if(!ateMain && !ateExtra) snake.pop(); if(eatenSinceSpeedup>=3){ stepDelay=Math.max(MIN_STEP,Math.round(stepDelay*SPEED_MULT_COMBINED)); eatenSinceSpeedup=0; }
+  if(extraFood && performance.now()>extraFood.expiresAt) extraFood=null; scheduleNextStep(); }
+function scheduleNextStep(){ if(timerId) clearTimeout(timerId); timerId=setTimeout(performStep, stepDelay); }
 
-  let ateExtra=false;
-  if (extraFood){
-    if (headGX>=extraFood.x && headGX<extraFood.x+extraFood.w && headGY>=extraFood.y && headGY<extraFood.y+extraFood.h){
-      scoreVar+=extraFood.points; totalEaten++; eatenSinceSpeedup++; spawnParticlesAt(extraFood.x,extraFood.y,extraFood.w,extraFood.h,'hairspray'); extraFood=null; ateExtra=true;
-    }
-  }
-  let ateMain=false;
-  if (food && !ateExtra){
-    if (headGX>=food.x && headGX<food.x+food.w && headGY>=food.y && headGY<food.y+food.h){
-      ateMain=true; totalEaten++; eatenSinceSpeedup++; scoreVar+=food.points;
-      spawnParticlesAt(food.x,food.y,food.w,food.h,food.cat);
-      pendingHairspray=(Math.random()<0.10); placeFood();
-    }
-  }
-  if (!ateMain && !ateExtra) snake.pop();
-  if (eatenSinceSpeedup>=3){ stepDelay=Math.max(MIN_STEP, Math.round(stepDelay*SPEED_MULT_COMBINED)); eatenSinceSpeedup=0; }
-  if (extraFood && performance.now()>extraFood.expiresAt) extraFood=null;
-  scheduleNextStep();
-}
-function scheduleNextStep(){ if (timerId) clearTimeout(timerId); timerId=setTimeout(performStep, stepDelay); }
+function setDir(nx,ny){ if(nx===-dx && ny===-dy) return; dx=nx; dy=ny; }
+addEventListener('keydown',e=>{ if(e.key==='ArrowUp') setDir(0,-1); else if(e.key==='ArrowDown') setDir(0,1); else if(e.key==='ArrowLeft') setDir(-1,0); else if(e.key==='ArrowRight') setDir(1,0); });
+document.getElementById('btnUp').addEventListener('click',()=>setDir(0,-1));
+document.getElementById('btnDown').addEventListener('click',()=>setDir(0,1));
+document.getElementById('btnLeft').addEventListener('click',()=>setDir(-1,0));
+document.getElementById('btnRight').addEventListener('click',()=>setDir(1,0));
 
-/* ====== Ввод ====== */
-function setDir(nx,ny){ if (nx===-dx && ny===-dy) return; dx=nx; dy=ny; }
-addEventListener('keydown', e=>{
-  if (e.key==='ArrowUp') setDir(0,-1);
-  else if (e.key==='ArrowDown') setDir(0,1);
-  else if (e.key==='ArrowLeft') setDir(-1,0);
-  else if (e.key==='ArrowRight') setDir(1,0);
-});
-document.getElementById('btnUp').addEventListener('click', ()=> setDir(0,-1));
-document.getElementById('btnDown').addEventListener('click', ()=> setDir(0,1));
-document.getElementById('btnLeft').addEventListener('click', ()=> setDir(-1,0));
-document.getElementById('btnRight').addEventListener('click', ()=> setDir(1,0));
-
-/* ====== GAS интеграция ====== */
-/** POST в GAS: username, score, tg_id — сервер сам проставит дату, обновит/добавит и отсортирует */
+/* ====== НАДЁЖНАЯ отправка в GAS ====== */
 async function sendScoreToSheets({username, score, tg_id}){
-  const payload = { username, score: String(score), tg_id };
-  // простой fetch JSON
-  const res = await fetch(LB_URL, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  });
-  return res.ok ? res.json().catch(()=>({ok:true})) : Promise.resolve({ok:false, status:res.status});
+  const json = JSON.stringify({ username, score:String(score), tg_id });
+
+  // 1) navigator.sendBeacon (без CORS/префлайта)
+  try{
+    if (navigator.sendBeacon){
+      const ok = navigator.sendBeacon(LB_URL, new Blob([json], { type:'text/plain;charset=UTF-8' }));
+      if (ok) return {ok:true, via:'beacon'};
+    }
+  }catch(_){}
+
+  // 2) no-cors + text/plain (не читаем ответ — и не нужно)
+  try{
+    await fetch(LB_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: json });
+    return {ok:true, via:'no-cors'};
+  }catch(_){}
+
+  // 3) JSON обычный (если CORS позволяет)
+  try{
+    const res = await fetch(LB_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: json });
+    return {ok:res.ok, via:'json', status:res.status};
+  }catch(e){
+    return {ok:false, error:String(e)};
+  }
 }
 
-/** GET топа для модалки */
+/* ====== GET топа для модалки ====== */
 async function getTopFromSheets(){
-  const res = await fetch(LB_URL); // doGet возвращает { top: [...] }
+  const res = await fetch(LB_URL); // doGet -> { top: [...] }
   if (!res.ok) throw new Error('LB fetch failed');
   return res.json();
 }
 
-/* ====== Game Over ====== */
+/* ====== Конец игры ====== */
 async function onGameOver(){
   const score = Number(scoreVar) || 0;
   const username = getTgUsername() || 'Игрок';
@@ -397,41 +231,25 @@ async function onGameOver(){
 
   try { await sendScoreToSheets({ username, score, tg_id }); } catch(e){ console.warn('GAS send err', e); }
 
-  btnRestart.style.display = 'block';
-  btnShare.style.display = 'block';
+  btnRestart.style.display='block';
+  btnShare.style.display='block';
 }
 
-/* ====== Модалка лидерборда ====== */
-const lbModal = document.getElementById('leaderboardModal');
-const lbList  = document.getElementById('lbList');
-const lbClose = document.getElementById('lbClose');
-
+/* ====== Лидерборд ====== */
+const lbModal=document.getElementById('leaderboardModal'); const lbList=document.getElementById('lbList'); const lbClose=document.getElementById('lbClose');
 function openLeaderboard(top=[], meName=null, myTgId=''){
-  lbList.innerHTML = '';
-  top.forEach((row, idx)=>{
-    const isMe = (myTgId && row.tg_id == myTgId) || (!myTgId && row.username === meName);
-    const li = document.createElement('li');
-    if (isMe) li.className = 'lb-item-me';
-    li.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:12px;">
-        <span>#${idx+1} ${row.username || 'Игрок'}${row.tg_id ? ' · tg:'+row.tg_id : ''}</span>
-        <strong>${row.score}</strong>
-      </div>`;
-    lbList.appendChild(li);
-  });
-  lbModal.hidden = false;
+  lbList.innerHTML=''; top.forEach((row,idx)=>{ const isMe=(myTgId && row.tg_id==myTgId)||(!myTgId && row.username===meName);
+    const li=document.createElement('li'); if(isMe) li.className='lb-item-me';
+    li.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;"><span>#${idx+1} ${row.username||'Игрок'}${row.tg_id?' · tg:'+row.tg_id:''}</span><strong>${row.score}</strong></div>`;
+    lbList.appendChild(li); });
+  lbModal.hidden=false;
 }
-lbClose?.addEventListener('click', ()=> lbModal.hidden = true);
-lbModal?.addEventListener('click', e=>{ if(e.target===lbModal) lbModal.hidden=true; });
+lbClose?.addEventListener('click',()=>lbModal.hidden=true);
+lbModal?.addEventListener('click',e=>{ if(e.target===lbModal) lbModal.hidden=true; });
 
 btnShare.addEventListener('click', async ()=>{
-  try {
-    const data = await getTopFromSheets();
-    openLeaderboard(data.top || [], getTgUsername(), getTgId());
-  } catch(e){
-    alert('Не удалось загрузить таблицу :(');
-    console.warn(e);
-  }
+  try{ const data=await getTopFromSheets(); openLeaderboard(data.top||[], getTgUsername(), getTgId()); }
+  catch(e){ alert('Не удалось загрузить таблицу :('); console.warn(e); }
 });
 
 /* ====== Старт ====== */
