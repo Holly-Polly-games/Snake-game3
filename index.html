@@ -80,13 +80,8 @@ const HEARTS_BASE = 12, HEARTS_COUNT = Math.max(1, Math.round(HEARTS_BASE * 0.6)
 const SPEED_MULT_BASE = 0.975, EXTRA_STEP_PCT = 0.003, SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT;
 const MIN_STEP = 25, SMOOTH_LERP = 0.14;
 
-/* ===== ENDPOINTS ===== */
-const LB_URL =
-  'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
-
-/* 👇 новый адрес LeadTeh 👇 */
-const LEADTEH_WEBHOOK_URL =
-  'https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e';
+/* ===== LeadTeh Webhook URL ===== */
+const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e';
 
 /* ===== DOM ===== */
 const canvas = document.getElementById('game');
@@ -111,7 +106,10 @@ window.addEventListener('load', initTelegramWebApp);
 /* helpers */
 function getPlayerName(){
   let name = localStorage.getItem('hp_player_name');
-  if (!name) { name = (prompt('Как тебя подписать в таблице лидеров?')||'Игрок').trim().slice(0,40); localStorage.setItem('hp_player_name', name); }
+  if (!name) { 
+    name = (prompt('Как тебя подписать в таблице лидеров?') || 'Игрок').trim().slice(0, 40); 
+    localStorage.setItem('hp_player_name', name); 
+  }
   return name;
 }
 function getTelegramIdOrNull(){
@@ -119,226 +117,53 @@ function getTelegramIdOrNull(){
   return u?.id ? String(u.id) : '';
 }
 
-/* ===== canvas sizing ===== */
-let tileSize, canvasW, canvasH;
-function resizeCanvas(){
-  const maxW = Math.min(window.innerWidth - 40, 960);
-  const maxH = window.innerHeight - 220;
-  const size = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
-  tileSize = Math.max(20, size);
-  canvasW = tileSize * COLS; canvasH = tileSize * ROWS;
-  canvas.width = canvasW; canvas.height = canvasH;
-  container.style.width = canvasW + 'px'; container.style.height = canvasH + 'px';
-}
-window.addEventListener('resize', resizeCanvas); resizeCanvas();
+/* ===== Send data to LeadTeh ===== */
+async function sendToLeadTeh(score) {
+  const tgId = getTelegramIdOrNull();
+  const username = getPlayerName();
 
-/* ===== images ===== */
-const categoryConfig = {
-  balzam:{prefix:'balzam',count:8,points:50,w:1,h:1,weight:1},
-  cream:{prefix:'Cream',count:3,points:100,w:1,h:2,weight:1},
-  shampoo:{prefix:'Shampoo',count:3,points:150,w:1,h:2,weight:1},
-  tip:{prefix:'tip',count:2,points:200,w:1,h:2,weight:0.35}
-};
-const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
+  const data = {
+    username: username,
+    score: score,
+    tg_id: tgId,
+    contact_by: 'telegram', // Используем telegram для поиска контакта
+    search: 'snake_game'
+  };
 
-const imagesByCategory = {};
-for (const k in categoryConfig){
-  imagesByCategory[k] = [];
-  const cfg = categoryConfig[k];
-  for (let i=1;i<=cfg.count;i++){
-    const img = new Image();
-    img.src = `assets/${cfg.prefix}${i}.png`;
-    imagesByCategory[k].push(img);
-  }
-}
-const hairsprayImages = [];
-for (let i=1;i<=hairsprayConfig.count;i++){
-  const img = new Image();
-  img.src = `assets/${hairsprayConfig.prefix}${i}.png`;
-  hairsprayImages.push(img);
-}
+  try {
+    const response = await fetch(LEADTEH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body: new URLSearchParams(data)
+    });
 
-const headImg = new Image(); headImg.src = 'golova.png';
-const telo1 = new Image(); telo1.src = 'telo1.png';
-const telo2 = new Image(); telo2.src = 'telo2.png';
-
-/* ===== State ===== */
-let snake = [];
-let dx = 1, dy = 0;
-let food = null;
-let extraFood = null;
-let pendingHairspray = false;
-let particles = [];
-let gameOver = false;
-let timerId = null;
-let eatenSinceSpeedup = 0;
-let totalEaten = 0;
-let scoreVar = 0;
-let globalTime = 0;
-
-/* ===== Utils ===== */
-function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
-function rectFree(x,y,w,h){
-  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
-  for (let sx=x; sx<x+w; sx++) for (let sy=y; sy<y+h; sy++) if(pointOnSnake(sx,sy)) return false;
-  return true;
-}
-function lerp(a,b,t){ return a + (b-a) * t; }
-function chooseCategory(){
-  const keys = Object.keys(categoryConfig); const pool=[];
-  for (const k of keys){ const w = categoryConfig[k].weight; const times = Math.max(1, Math.round(w*10)); for (let i=0;i<times;i++) pool.push(k); }
-  return pool[randInt(0,pool.length-1)];
-}
-
-/* ===== Food placement ===== */
-function placeFood(){
-  const maxAttempts = 1000; let attempts=0; food=null;
-  while(attempts++ < maxAttempts){
-    const cat = chooseCategory(); const cfg = categoryConfig[cat];
-    const w=cfg.w, h=cfg.h; const x=randInt(0,COLS-w), y=randInt(0,ROWS-h);
-    if (!rectFree(x,y,w,h)) continue;
-    const imgs = imagesByCategory[cat]; const img = imgs.length ? imgs[randInt(0,imgs.length-1)] : null;
-    food = {x,y,cat,img,points:cfg.points,w,h}; break;
-  }
-  if (!food){
-    outer: for (let yy=0; yy<ROWS; yy++){ for (let xx=0; xx<COLS; xx++){
-      if (!pointOnSnake(xx,yy)){ const imgs = imagesByCategory['balzam']; food = {x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1}; break outer; }
-    }}
-  }
-  if (pendingHairspray){
-    const wH=hairsprayConfig.w, hH=hairsprayConfig.h; let placed=false, tries=0;
-    while(tries++<800 && !placed){
-      const x=randInt(0,COLS-wH), y=randInt(0,ROWS-hH);
-      if (!rectFree(x,y,wH,hH)) continue;
-      if (!(x+wH<=food.x || x>=food.x+food.w || y+hH<=food.y || y>=food.y+food.h)) continue;
-      const img = hairsprayImages.length ? hairsprayImages[randInt(0,hairsprayImages.length-1)] : null;
-      extraFood = {x,y,cat:'hairspray',img,points:hairsprayConfig.points,w:wH,h:hH,expiresAt:performance.now()+3000};
-      placed=true;
+    if (!response.ok) {
+      console.error('Ошибка при отправке данных в LeadTeh:', response.status);
+      return;
     }
-    pendingHairspray=false;
+
+    console.log('Данные успешно отправлены в LeadTeh!');
+  } catch (error) {
+    console.error('Ошибка запроса к LeadTeh:', error);
   }
 }
 
-/* ===== Smooth segments ===== */
-function createSegment(x,y){ return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 }; }
-
-/* ===== Init / restart ===== */
-function initGame(){
-  const cx=Math.floor(COLS/2), cy=Math.floor(ROWS/2);
-  snake=[createSegment(cx,cy),createSegment(cx-1,cy),createSegment(cx-2,cy)];
-  dx=1; dy=0; stepDelay=Math.round(BASE_STEP_MS*1.20);
-  food=null; extraFood=null; pendingHairspray=false; particles=[];
-  gameOver=false; eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
-  placeFood(); btnRestart.style.display='none'; btnShare.style.display='none';
-  if (timerId) clearTimeout(timerId); scheduleNextStep(); requestAnimationFrame(renderLoop);
-}
-
-/* ========== onGameOver with robust LeadTeh attempts ========== */
+/* ===== Game over logic ===== */
 async function onGameOver() {
   const score = Number(scoreVar) || 0;
   console.log('GAME OVER, score=', score);
-
-  // 1) Telegram WebApp (if inside TG)
-  try {
-    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.sendData === 'function') {
-      const payload = { score, ts: Date.now() };
-      console.log('calling Telegram.WebApp.sendData', payload);
-      Telegram.WebApp.sendData(JSON.stringify(payload));
-    } else {
-      console.warn('Telegram.WebApp.sendData not available in this environment.');
-    }
-  } catch (e) {
-    console.warn('sendData error', e);
-  }
-
-  // 2) Google Apps Script (LB_URL) - use GET to avoid preflight
-  try {
-    const username = encodeURIComponent(getPlayerName());
-    const tg = encodeURIComponent(getTelegramIdOrNull() || '');
-    const q = `?username=${username}&score=${encodeURIComponent(String(score))}&tg_id=${tg}`;
-    const url = LB_URL + q;
-    console.log('Sending GET to LB_URL (no-preflight):', url);
-    const res = await fetch(url, { method: 'GET', credentials: 'omit' });
-    console.log('LB_URL response status:', res.status);
-  } catch (e) {
-    console.warn('LB_URL get failed', e);
-  }
-
-  // 3) LeadTeh webhook - try several contact_by values (form-urlencoded)
-  try {
-    const base = {
-      username: getPlayerName(),
-      score: String(score),
-      tg_id: getTelegramIdOrNull() || ''
-    };
-
-    // Пул кандидатов для contact_by — можно редактировать под ваши догадки/лог сервера
-    const contactCandidates = [
-      'telegram', 'tg', 'telegram_bot', 'chat', 'site', 'web', 'webapp',
-      'callback', 'phone', 'email', 'online', 'lead', 'other'
-    ];
-
-    let success = false;
-    let lastStatus = null;
-    for (let i = 0; i < contactCandidates.length && !success; i++) {
-      const contact_by = contactCandidates[i];
-      const fd = new URLSearchParams();
-      fd.append('username', base.username);
-      fd.append('score', base.score);
-      fd.append('tg_id', base.tg_id);
-      fd.append('contact_by', contact_by);
-      fd.append('search', 'snake_game');
-
-      console.log(`LeadTeh: attempt ${i+1}/${contactCandidates.length}, contact_by='${contact_by}'`);
-      try {
-        const resp = await fetch(LEADTEH_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-          body: fd.toString()
-        });
-        lastStatus = resp.status;
-        console.log('LeadTeh response status =', resp.status);
-
-        if (resp.ok) {
-          console.log('LeadTeh accepted with contact_by =', contact_by);
-          success = true;
-          break;
-        }
-
-        // If 422 — log server reply for diagnostics
-        if (resp.status === 422) {
-          const txt = await resp.text().catch(()=>null);
-          console.warn('LeadTeh 422 response body:', txt);
-          // try next candidate
-        } else {
-          // other non-ok statuses — log and continue
-          const txt = await resp.text().catch(()=>null);
-          console.warn('LeadTeh non-OK response:', resp.status, txt);
-        }
-      } catch (err) {
-        console.warn('LeadTeh fetch error for contact_by=' + contact_by, err);
-      }
-
-      // short delay between attempts to be polite
-      await new Promise(r => setTimeout(r, 220));
-    }
-
-    if (!success) {
-      console.warn('LeadTeh: all contact_by attempts failed, last status =', lastStatus);
-    }
-  } catch (e) {
-    console.warn('LeadTeh direct post failed (client)', e);
-  }
-
-  // 4) show overlays
+  
+  // Отправляем данные в LeadTeh
+  await sendToLeadTeh(score);
+  
   btnRestart.style.display = 'block';
   btnShare.style.display = 'block';
 }
 
 /* ===== Step logic ===== */
 function willCollide(nx,ny){ if(nx<0||ny<0||nx>=COLS||ny>=ROWS) return true; for(let i=1;i<snake.length;i++) if(snake[i].x===nx&&snake[i].y===ny) return true; return false; }
-
 function performStep(){
   if (gameOver) return;
   const headGX=snake[0].x+dx, headGY=snake[0].y+dy;
@@ -368,103 +193,6 @@ function performStep(){
 }
 function scheduleNextStep(){ if (timerId) clearTimeout(timerId); timerId=setTimeout(performStep, stepDelay); }
 
-/* ===== Particles & draw helpers (без изменений по сути) ===== */
-function spawnParticlesAt(cellX,cellY,cellsW,cellsH,cat){
-  const cx=(cellX+cellsW/2)*tileSize, cy=(cellY+cellsH/2)*tileSize;
-  const char=(cat==='hairspray')?'⭐️':'❤️', SLOW_MULT=0.6;
-  for(let i=0;i<Math.max(3,HEARTS_COUNT);i++){
-    const angle=Math.random()*Math.PI*2, baseSpeed=0.6+Math.random()*1.6;
-    const vyBias=(cat==='hairspray')?-0.4-Math.random()*0.2:(Math.random()*0.4-0.2);
-    const life=40+Math.floor(Math.random()*40), size=tileSize*(0.45+Math.random()*0.8);
-    const vx=Math.cos(angle)*baseSpeed*(0.6+Math.random()*0.9)*SLOW_MULT;
-    const vy=(Math.sin(angle)*baseSpeed*(0.6+Math.random()*0.9)+vyBias)*SLOW_MULT;
-    particles.push({type:'emoji',char,x:cx+(Math.random()-0.5)*tileSize*0.2,y:cy+(Math.random()-0.5)*tileSize*0.2,vx,vy,size,life,maxLife:life});
-  }
-}
-function updateParticles(){ for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vx*=0.995; p.vy+=0.01; p.life--; if(p.life<=0) particles.splice(i,1);} }
-function drawEllipseFilled(cx,cy,rx,ry,fillStyle,alpha=1,rotation=0){ ctx.save(); ctx.translate(cx,cy); ctx.rotate(rotation); ctx.globalAlpha=alpha; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fillStyle=fillStyle; ctx.fill(); ctx.restore(); }
-function computeImageDrawRect(areaLeft,areaTop,areaW,areaH){
-  const desiredW=Math.round(areaW*FOOD_SCALE), desiredH=Math.round(areaH*FOOD_SCALE);
-  const allowedOverflowW=Math.min(Math.round(areaW*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const allowedOverflowH=Math.min(Math.round(areaH*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const maxAllowedW=areaW+allowedOverflowW, maxAllowedH=areaH+allowedOverflowH;
-  let drawW=Math.min(desiredW,maxAllowedW), drawH=Math.min(desiredH,maxAllowedH);
-  return { drawW, drawH, areaLeft, areaTop, areaW, areaH, maxAllowedW, maxAllowedH };
-}
-function drawSingleFood(it,nowSec){
-  if(!it) return;
-  const areaW=tileSize*it.w, areaH=tileSize*it.h, areaLeft=it.x*tileSize, areaTop=it.y*tileSize;
-  if(it.cat==='hairspray'){
-    const pulse=1+0.20*Math.sin(nowSec*4+it.x*1.7+it.y*0.9);
-    const cx=Math.round(areaLeft+areaW/2), cy=Math.round(areaTop+areaH/2+tileSize*0.08);
-    const base=Math.min(areaW,areaH), rx=Math.max(10,Math.round((base/2+12)*pulse)), ry=Math.max(8,Math.round((base/2+8)*pulse*0.82));
-    drawEllipseFilled(cx,cy,rx,ry,'rgba(255,235,0,0.98)',0.98);
-  }
-  if(it.img?.complete && it.img.naturalWidth && it.img.naturalHeight){
-    const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH), iw=it.img.naturalWidth, ih=it.img.naturalHeight, aspect=iw/ih;
-    let drawW=c.drawW, drawH=Math.round(drawW/aspect);
-    if(drawH>c.maxAllowedH){ drawH=c.maxAllowedH; drawW=Math.round(drawH*aspect); }
-    const drawX=Math.round(areaLeft+(areaW-drawW)/2), drawY=Math.round(areaTop+(areaH-drawH)/2);
-    ctx.drawImage(it.img,drawX,drawY,drawW,drawH);
-  } else {
-    const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH), dw=Math.round(Math.min(c.drawW,c.maxAllowedW*0.95)), dh=Math.round(dw/1.2);
-    const dx=Math.round(areaLeft+(areaW-dw)/2), dy=Math.round(areaTop+(areaH-dh)/2);
-    ctx.fillStyle='#ff6b6b'; ctx.fillRect(dx,dy,dw,dh);
-  }
-}
-function drawFood(nowSec){ drawSingleFood(food,nowSec); if(extraFood) drawSingleFood(extraFood,nowSec); }
-
-function drawSnake(){
-  for(let i=0;i<snake.length;i++){ const s=snake[i]; const tx=s.x*tileSize+tileSize/2, ty=s.y*tileSize+tileSize/2; s.px=lerp(s.px,tx,SMOOTH_LERP); s.py=lerp(s.py,ty,SMOOTH_LERP); }
-  for(let i=1;i<snake.length;i++){
-    const s=snake[i]; const size=Math.max(6,Math.floor(tileSize*1.06));
-    if(i===snake.length-1 && telo2?.complete && telo2.naturalWidth){
-      const tail=snake[snake.length-1], prev=snake[snake.length-2], angle=Math.atan2(prev.py-tail.py,prev.px-tail.px);
-      ctx.save(); ctx.translate(tail.px,tail.py); ctx.rotate(angle+Math.PI/2);
-      let iw=telo2.naturalWidth, ih=telo2.naturalHeight, aspect=iw/ih, dw=size, dh=size;
-      if(dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
-      ctx.drawImage(telo2,-dw/2,-dh/2,dw,dh); ctx.restore();
-    } else if (telo1?.complete && telo1.naturalWidth){
-      let iw=telo1.naturalWidth, ih=telo1.naturalHeight, aspect=iw/ih, dw=size, dh=size;
-      if(dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
-      ctx.drawImage(telo1,Math.round(s.px-dw/2),Math.round(s.py-dh/2),dw,dh);
-    } else {
-      ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(s.px,s.py,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill();
-    }
-  }
-  const head=snake[0], hx=head.px, hy=head.py, headScale=1.42, headSizeBase=Math.max(6,Math.floor(tileSize*headScale));
-  if(headImg?.complete && headImg.naturalWidth){
-    const dirAngle=Math.atan2(dy,dx); ctx.save(); ctx.translate(hx,hy); ctx.rotate(dirAngle+Math.PI/2);
-    let iw=headImg.naturalWidth, ih=headImg.naturalHeight, aspect=iw/ih, dw=headSizeBase, dh=headSizeBase;
-    if(dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
-    ctx.drawImage(headImg,-dw/2,-dh/2,dw,dh); ctx.restore();
-  } else {
-    ctx.fillStyle='#E159A9'; ctx.beginPath(); ctx.arc(hx,hy,Math.max(4,Math.floor(tileSize/2-2)),0,Math.PI*2); ctx.fill();
-  }
-}
-
-/* ===== UI / loop / input ===== */
-function drawParticles(){ if(!particles.length) return; ctx.save(); for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; if(p.type==='emoji'){ ctx.globalAlpha=Math.max(0,p.life/p.maxLife); ctx.font=`${Math.max(8,Math.floor(p.size))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.char,Math.round(p.x),Math.round(p.y)); ctx.globalAlpha=1; } } ctx.restore(); }
-function drawScore(){ ctx.save(); ctx.fillStyle='#000'; ctx.font=`${Math.max(14,Math.floor(tileSize*0.7))}px Futura, Arial, sans-serif`; ctx.textBaseline='top'; ctx.fillText('Счёт: '+scoreVar, Math.max(6,tileSize*0.15), Math.max(6,tileSize*0.12)); ctx.restore(); }
-function renderLoop(ts){ globalTime=ts/1000; if(extraFood && performance.now()>extraFood.expiresAt) extraFood=null; ctx.clearRect(0,0,canvasW,canvasH); drawFood(globalTime); drawSnake(); drawParticles(); drawScore(); updateParticles(); requestAnimationFrame(renderLoop); }
-
-function setDir(nx,ny){ if(nx===-dx&&ny===-dy) return; dx=nx; dy=ny; }
-document.addEventListener('keydown', e=>{ if(e.key==='ArrowUp') setDir(0,-1); else if(e.key==='ArrowDown') setDir(0,1); else if(e.key==='ArrowLeft') setDir(-1,0); else if(e.key==='ArrowRight') setDir(1,0); });
-document.getElementById('btnUp').addEventListener('click', ()=>setDir(0,-1));
-document.getElementById('btnDown').addEventListener('click', ()=>setDir(0,1));
-document.getElementById('btnLeft').addEventListener('click', ()=>setDir(-1,0));
-document.getElementById('btnRight').addEventListener('click', ()=>setDir(1,0));
-
-const lbModal=document.getElementById('leaderboardModal'), lbList=document.getElementById('lbList'), lbClose=document.getElementById('lbClose');
-function openLeaderboard(top=[], meName=null, myTgId=''){ lbList.innerHTML=''; top.forEach((row,idx)=>{ const isMe=(myTgId&&row.tg_id===myTgId)||(!myTgId&&row.username===meName); const li=document.createElement('li'); if(isMe) li.className='lb-item-me'; li.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;"><span>#${idx+1} ${row.username||'Игрок'}${row.tg_id?' · tg:'+row.tg_id:''}</span><strong>${row.score}</strong></div>`; lbList.appendChild(li); }); lbModal.hidden=false; }
-lbClose?.addEventListener('click', ()=> lbModal.hidden=true);
-lbModal?.addEventListener('click', e=>{ if(e.target===lbModal) lbModal.hidden=true; });
-btnRestart.addEventListener('click', ()=> initGame());
-btnShare.addEventListener('click', async ()=>{ try{ const r=await fetch(LB_URL); if(!r.ok) throw new Error('LB fetch failed'); const data=await r.json(); openLeaderboard(data.top||[], localStorage.getItem('hp_player_name'), getTelegramIdOrNull()); }catch(e){ alert('Не удалось загрузить таблицу :('); console.warn(e);} });
-
-/* ===== Start ===== */
-resizeCanvas(); initGame();
-window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar, pendingHairspray };
 </script>
 </body>
 </html>
