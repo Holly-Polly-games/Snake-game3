@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Holly Polly — Змейка</title>
 <style>
   :root{
@@ -63,7 +63,7 @@
   .ctrl-btn{ width:64px; height:64px; border-radius:999px; background:var(--control-green); color:#fff; border:none; font-size:22px; cursor:pointer; }
   @media(max-width:480px){ .ctrl-btn{ width:54px; height:54px; font-size:18px; } }
 
-  /* ===== ЛИДЕРБОРД (добавлено) ===== */
+  /* ===== ЛИДЕРБОРД (модалка) ===== */
   .lb-modal{ position:fixed; inset:0; background:rgba(0,0,0,.5);
     display:flex; align-items:center; justify-content:center; z-index:50; }
   .lb-modal[hidden]{ display:none; }
@@ -88,7 +88,7 @@
     <button id="btnShare" class="overlay-btn">Таблица лидеров</button>
   </div>
 
-  <!-- ===== ЛИДЕРБОРД: модалка (добавлено) ===== -->
+  <!-- ===== ЛИДЕРБОРД: модалка ===== -->
   <div id="leaderboardModal" class="lb-modal" hidden>
     <div class="lb-card">
       <div class="lb-head">
@@ -137,7 +137,7 @@ const SMOOTH_LERP = 0.14;
 /* categories (w x h in cells) — hairspray is bonus-only */
 const categoryConfig = {
   balzam:   {prefix:'balzam',    count:8,  points:50,  w:1, h:1, weight: 1},
-  cream:    {prefix:'Cream',     count:3,  points:100, w:1, h:2, weight: 1}, // occupies 2 cells vertical
+  cream:    {prefix:'Cream',     count:3,  points:100, w:1, h:2, weight: 1},
   shampoo:  {prefix:'Shampoo',   count:3,  points:150, w:1, h:2, weight: 1},
   tip:      {prefix:'tip',       count:2,  points:200, w:1, h:2, weight: 0.35}
 };
@@ -173,6 +173,7 @@ for (const k in categoryConfig){
   const cfg = categoryConfig[k];
   for (let i=1;i<=cfg.count;i++){
     const img = new Image();
+    // всё из assets/ кроме головы/тела/хвоста/логотипа
     img.src = `assets/${cfg.prefix}${i}.png`;
     imagesByCategory[k].push(img);
   }
@@ -202,50 +203,565 @@ let totalEaten = 0;
 let scoreVar = 0;
 let globalTime = 0;
 
-/* ========== Submit Score to LeadTeh Webhook ========== */
-const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e';
+/* ========== Utils ========== */
+function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
+function rectFree(x,y,w,h){
+  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
+  for (let sx=x; sx<x+w; sx++) for (let sy=y; sy<y+h; sy++) if(pointOnSnake(sx,sy)) return false;
+  return true;
+}
+function lerp(a,b,t){ return a + (b-a) * t; }
+function chooseCategory(){
+  const keys = Object.keys(categoryConfig);
+  const pool = [];
+  for (const k of keys){
+    const w = categoryConfig[k].weight;
+    const times = Math.max(1, Math.round(w * 10));
+    for (let i=0;i<times;i++) pool.push(k);
+  }
+  return pool[randInt(0, pool.length-1)];
+}
 
-async function sendToLeadTeh(score) {
-  const tgId = getTelegramIdOrNull();
+/* ========== Food placement ========== */
+let pendingHairspray = false;
+function placeFood(){
+  const maxAttempts = 1000;
+  let attempts=0;
+  food = null;
+  while(attempts++ < maxAttempts){
+    const cat = chooseCategory();
+    const cfg = categoryConfig[cat];
+    const w = cfg.w, h = cfg.h;
+    const x = randInt(0, COLS - w);
+    const y = randInt(0, ROWS - h);
+    if (!rectFree(x,y,w,h)) continue;
+    const imgs = imagesByCategory[cat];
+    const img = imgs.length ? imgs[randInt(0, imgs.length-1)] : null;
+    food = {x,y,cat,img,points:cfg.points,w,h};
+    break;
+  }
+  if (!food){
+    outer: for (let yy=0; yy<ROWS; yy++){
+      for (let xx=0; xx<COLS; xx++){
+        if (!pointOnSnake(xx,yy)){ const imgs = imagesByCategory['balzam']; food = {x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1}; break outer; }
+      }
+    }
+  }
+
+  if (pendingHairspray){
+    const wH = hairsprayConfig.w, hH = hairsprayConfig.h;
+    let placed = false;
+    let attempts2 = 0;
+    while(attempts2++ < 800 && !placed){
+      const x = randInt(0, COLS - wH);
+      const y = randInt(0, ROWS - hH);
+      if (!rectFree(x,y,wH,hH)) continue;
+      // не пересекаться с основной едой
+      if (!(x + wH <= food.x || x >= food.x + food.w || y + hH <= food.y || y >= food.y + food.h)) continue;
+      const img = hairsprayImages.length ? hairsprayImages[randInt(0, hairsprayImages.length-1)] : null;
+      extraFood = { x, y, cat: 'hairspray', img, points: hairsprayConfig.points, w: wH, h: hH, expiresAt: performance.now() + 3000 };
+      placed = true;
+    }
+    pendingHairspray = false;
+  }
+}
+
+/* ========== Smooth segments ========== */
+function createSegment(x,y){
+  return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 };
+}
+
+/* ========== Init / restart ========== */
+function initGame(){
+  const cx = Math.floor(COLS/2);
+  const cy = Math.floor(ROWS/2);
+  snake = [ createSegment(cx,cy), createSegment(cx-1,cy), createSegment(cx-2,cy) ];
+  dx = 1; dy = 0;
+  stepDelay = Math.round(BASE_STEP_MS * 1.20);
+  food = null;
+  extraFood = null;
+  pendingHairspray = false;
+  particles = [];
+  gameOver = false;
+  eatenSinceSpeedup = 0;
+  totalEaten = 0;
+  scoreVar = 0;
+  placeFood();
+  btnRestart.style.display = 'none';
+  btnShare.style.display = 'none';
+  if (timerId) clearTimeout(timerId);
+  scheduleNextStep();
+  requestAnimationFrame(renderLoop);
+}
+
+/* ========== Step logic ========== */
+function willCollide(nx, ny){
+  if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
+  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
+  return false;
+}
+
+/* >>>>>>> ОБНОВЛЕНО: отправка на LeadTeh при завершении <<<<<<< */
+async function onGameOver(){
+  const score = Number(scoreVar) || 0;
+  console.log('GAME OVER, score=', score);
+
+  // 1) Имя игрока
   const username = getPlayerName();
 
+  // 2) Telegram ID (если доступен в Telegram WebApp)
+  const tg_id = getTelegramIdOrNull();
+
+  // 3) Данные для LeadTeh
   const data = {
     username: username,
-    score: score,
-    tg_id: tgId,
-    contact_by: 'telegram',
+    score: String(score),
+    tg_id: tg_id,
+    contact_by: 'webapp',
     search: 'snake_game'
   };
 
+  // 4) Отправка в LeadTeh (application/x-www-form-urlencoded)
   try {
-    const response = await fetch(LEADTEH_WEBHOOK_URL, {
+    const response = await fetch('https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       },
       body: new URLSearchParams(data)
     });
 
-    if (!response.ok) {
-      console.error('Ошибка при отправке данных в LeadTeh:', response.status);
-      return;
+    if (response.ok) {
+      console.log('Данные успешно отправлены на LeadTeh');
+    } else {
+      console.warn('Ошибка при отправке данных на LeadTeh:', response.status);
     }
-
-    console.log('Данные успешно отправлены в LeadTeh!');
   } catch (error) {
-    console.error('Ошибка запроса к LeadTeh:', error);
+    console.warn('Ошибка при подключении к вебхуку LeadTeh:', error);
+  }
+
+  // (Необязательно) Параллельно обновим Google Apps Script лидерборд,
+  // если вы используете модалку ниже. Удалите строку ниже, если не нужно.
+  try { await submitScoreSimple(score); } catch(e){ console.warn('submitScore error', e); }
+
+  // 5) Показать кнопки после завершения
+  btnRestart.style.display = 'block';
+  btnShare.style.display = 'block';
+}
+
+function performStep(){
+  if (gameOver) return;
+  const headGX = snake[0].x + dx;
+  const headGY = snake[0].y + dy;
+
+  if (willCollide(headGX, headGY)){
+    gameOver = true;
+    onGameOver();
+    return;
+  }
+
+  snake.unshift( createSegment(headGX, headGY) );
+
+  // extraFood (hairspray)
+  let ateExtra = false;
+  if (extraFood){
+    if (headGX >= extraFood.x && headGX < extraFood.x + extraFood.w &&
+        headGY >= extraFood.y && headGY < extraFood.y + extraFood.h){
+      scoreVar += extraFood.points;
+      totalEaten++;
+      eatenSinceSpeedup++;
+      spawnParticlesAt(extraFood.x, extraFood.y, extraFood.w, extraFood.h, 'hairspray');
+      extraFood = null;
+      ateExtra = true;
+    }
+  }
+
+  // main food
+  let ateMain = false;
+  if (food && !ateExtra){
+    if (headGX >= food.x && headGX < food.x + food.w &&
+        headGY >= food.y && headGY < food.y + food.h){
+      ateMain = true;
+      totalEaten++;
+      eatenSinceSpeedup++;
+      scoreVar += food.points;
+      spawnParticlesAt(food.x, food.y, food.w, food.h, food.cat);
+      pendingHairspray = (Math.random() < 0.10);
+      placeFood();
+    }
+  }
+
+  if (!ateMain && !ateExtra) snake.pop();
+
+  if (eatenSinceSpeedup >= 3){
+    stepDelay = Math.max(MIN_STEP, Math.round(stepDelay * SPEED_MULT_COMBINED));
+    eatenSinceSpeedup = 0;
+  }
+
+  if (extraFood && performance.now() > extraFood.expiresAt){
+    extraFood = null;
+  }
+
+  scheduleNextStep();
+}
+
+function scheduleNextStep(){
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(performStep, stepDelay);
+}
+
+/* ========== Particles ========== */
+function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
+  const cx = (cellX + cellsW/2) * tileSize;
+  const cy = (cellY + cellsH/2) * tileSize;
+  const char = (cat === 'hairspray') ? '⭐️' : '❤️';
+  const SLOW_MULT = 0.6;
+  for (let i=0;i<Math.max(3, HEARTS_COUNT);i++){
+    const angle = Math.random() * Math.PI * 2;
+    const baseSpeed = 0.6 + Math.random() * 1.6;
+    const vyBias = (cat === 'hairspray') ? -0.4 - Math.random()*0.2 : (Math.random()*0.4 - 0.2);
+    const life = 40 + Math.floor(Math.random()*40);
+    const size = tileSize * (0.45 + Math.random()*0.8);
+    const vx = Math.cos(angle) * baseSpeed * (0.6 + Math.random()*0.9) * SLOW_MULT;
+    const vy = (Math.sin(angle) * baseSpeed * (0.6 + Math.random()*0.9) + vyBias) * SLOW_MULT;
+    particles.push({
+      type:'emoji',
+      char,
+      x: cx + (Math.random()-0.5) * tileSize * 0.2,
+      y: cy + (Math.random()-0.5) * tileSize * 0.2,
+      vx,
+      vy,
+      size,
+      life,
+      maxLife: life
+    });
   }
 }
 
-/* ========== Game logic ========== */
+function updateParticles(){
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.995;
+    p.vy += 0.01;
+    p.life--;
+    if (p.life <= 0) particles.splice(i,1);
+  }
+}
 
-/* Game Initialization, Rendering, and Steps (unchanged) */
+/* ========== Drawing helpers ========== */
+function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI*2);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  ctx.restore();
+}
 
-/* ========== End of game logic ========== */
+function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
+  const desiredW = Math.round(areaW * FOOD_SCALE);
+  const desiredH = Math.round(areaH * FOOD_SCALE);
+  const allowedOverflowW = Math.min(Math.round(areaW * MAX_OVERFLOW_PCT), Math.round(tileSize * MAX_OVERFLOW_TILES));
+  const allowedOverflowH = Math.min(Math.round(areaH * MAX_OVERFLOW_PCT), Math.round(tileSize * MAX_OVERFLOW_TILES));
+  const maxAllowedW = areaW + allowedOverflowW;
+  const maxAllowedH = areaH + allowedOverflowH;
+  let drawW = Math.min(desiredW, maxAllowedW);
+  let drawH = Math.min(desiredH, maxAllowedH);
+  return { drawW, drawH, areaLeft, areaTop, areaW, areaH, maxAllowedW, maxAllowedH };
+}
 
-/* ========== End of code ========== */
+/* ========== Draw food ========= */
+function drawSingleFood(it, nowSec){
+  if (!it) return;
+  const cellsW = it.w, cellsH = it.h;
+  const areaW = tileSize * cellsW;
+  const areaH = tileSize * cellsH;
+  const areaLeft = it.x * tileSize;
+  const areaTop  = it.y * tileSize;
+
+  if (it.cat === 'hairspray'){
+    const pulse = 1 + 0.20 * Math.sin(nowSec * 4 + it.x * 1.7 + it.y * 0.9);
+    const cx = Math.round(areaLeft + areaW/2);
+    const cy = Math.round(areaTop + areaH/2 + tileSize*0.08);
+    const base = Math.min(areaW, areaH);
+    const rx = Math.max(10, Math.round((base/2 + 12) * pulse));
+    const ry = Math.max(8, Math.round((base/2 + 8) * pulse * 0.82));
+    drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98);
+  }
+
+  if (it.img && it.img.complete && it.img.naturalWidth && it.img.naturalHeight){
+    const c = computeImageDrawRect(areaLeft, areaTop, areaW, areaH);
+    const iw = it.img.naturalWidth, ih = it.img.naturalHeight;
+    const aspect = iw / ih;
+    let drawW = c.drawW;
+    let drawH = Math.round(drawW / aspect);
+    if (drawH > c.maxAllowedH){
+      drawH = c.maxAllowedH;
+      drawW = Math.round(drawH * aspect);
+    }
+    const drawX = Math.round(areaLeft + (areaW - drawW)/2);
+    const drawY = Math.round(areaTop + (areaH - drawH)/2);
+    ctx.drawImage(it.img, drawX, drawY, drawW, drawH);
+  } else {
+    const c = computeImageDrawRect(areaLeft, areaTop, areaW, areaH);
+    const dw = Math.round(Math.min(c.drawW, c.maxAllowedW * 0.95));
+    const dh = Math.round(dw / 1.2);
+    const dx = Math.round(areaLeft + (areaW - dw)/2);
+    const dy = Math.round(areaTop + (areaH - dh)/2);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.fillRect(dx, dy, dw, dh);
+  }
+}
+
+function drawFood(nowSec){
+  drawSingleFood(food, nowSec);
+  if (extraFood){
+    drawSingleFood(extraFood, nowSec);
+  }
+}
+
+/* ========== Draw snake ========== */
+function drawSnake(){
+  for (let i=0;i<snake.length;i++){
+    const s = snake[i];
+    const targetCx = s.x * tileSize + tileSize/2;
+    const targetCy = s.y * tileSize + tileSize/2;
+    s.px = lerp(s.px, targetCx, SMOOTH_LERP);
+    s.py = lerp(s.py, targetCy, SMOOTH_LERP);
+  }
+
+  for (let i=1; i<snake.length; i++){
+    const s = snake[i];
+    const size = Math.max(6, Math.floor(tileSize * 1.06));
+    if (i === snake.length - 1){
+      if (telo2 && telo2.complete && telo2.naturalWidth){
+        const tail = snake[snake.length - 1];
+        const prev = snake[snake.length - 2];
+        const angle = Math.atan2(prev.py - tail.py, prev.px - tail.px);
+        ctx.save();
+        ctx.translate(tail.px, tail.py);
+        ctx.rotate(angle + Math.PI/2);
+        let iw = telo2.naturalWidth, ih = telo2.naturalHeight;
+        let aspect = iw / ih;
+        let dw = size, dh = size;
+        if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
+        ctx.drawImage(telo2, -dw/2, -dh/2, dw, dh);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#E159A9';
+        ctx.beginPath();
+        ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else {
+      if (telo1 && telo1.complete && telo1.naturalWidth){
+        let iw = telo1.naturalWidth, ih = telo1.naturalHeight;
+        let aspect = iw / ih;
+        let dw = size, dh = size;
+        if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
+        ctx.drawImage(telo1, Math.round(s.px - dw/2), Math.round(s.py - dh/2), dw, dh);
+      } else {
+        ctx.fillStyle = '#E159A9';
+        ctx.beginPath();
+        ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const head = snake[0];
+  const hx = head.px, hy = head.py;
+  const headScale = 1.42;
+  const headSizeBase = Math.max(6, Math.floor(tileSize * headScale));
+  if (headImg && headImg.complete && headImg.naturalWidth){
+    const dirAngle = Math.atan2(dy, dx);
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(dirAngle + Math.PI/2);
+    let iw = headImg.naturalWidth, ih = headImg.naturalHeight;
+    let aspect = iw / ih;
+    let dw = headSizeBase, dh = headSizeBase;
+    if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
+    ctx.drawImage(headImg, -dw/2, -dh/2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#E159A9';
+    ctx.beginPath();
+    ctx.arc(hx, hy, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
+    ctx.fill();
+    const eyeR = Math.max(2, Math.floor(tileSize/6));
+    const eyeOffsetX = tileSize / 4;
+    const eyeOffsetY = tileSize / 6;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2);
+    ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2);
+    ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+/* ========== Draw particles & score ========== */
+function drawParticles(){
+  if (!particles.length) return;
+  ctx.save();
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    if (p.type === 'emoji'){
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.font = `${Math.max(8, Math.floor(p.size))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.char, Math.round(p.x), Math.round(p.y));
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color || '#fff';
+      ctx.beginPath(); ctx.arc(Math.round(p.x), Math.round(p.y), p.r, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+}
+
+function drawScore(){
+  ctx.save();
+  ctx.fillStyle = '#000';
+  ctx.font = `${Math.max(14, Math.floor(tileSize * 0.7))}px Futura, Arial, sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillText('Счёт: ' + scoreVar, Math.max(6, tileSize*0.15), Math.max(6, tileSize*0.12));
+  ctx.restore();
+}
+
+/* ========== Render loop ========== */
+function renderLoop(ts){
+  globalTime = ts / 1000;
+  if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
+
+  ctx.clearRect(0,0,canvasW,canvasH);
+  drawFood(globalTime);
+  drawSnake();
+  drawParticles();
+  drawScore();
+  updateParticles();
+  requestAnimationFrame(renderLoop);
+}
+
+/* ========== Input ========== */
+function setDir(nx, ny){
+  if (nx === -dx && ny === -dy) return;
+  dx = nx; dy = ny;
+}
+document.addEventListener('keydown', e=>{
+  if (e.key === 'ArrowUp') setDir(0,-1);
+  else if (e.key === 'ArrowDown') setDir(0,1);
+  else if (e.key === 'ArrowLeft') setDir(-1,0);
+  else if (e.key === 'ArrowRight') setDir(1,0);
+});
+document.getElementById('btnUp').addEventListener('click', ()=> setDir(0,-1));
+document.getElementById('btnDown').addEventListener('click', ()=> setDir(0,1));
+document.getElementById('btnLeft').addEventListener('click', ()=> setDir(-1,0));
+document.getElementById('btnRight').addEventListener('click', ()=> setDir(1,0));
+
+// touch swipe
+let tsx=0, tsy=0;
+canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; tsx=t.clientX; tsy=t.clientY; }, {passive:true});
+canvas.addEventListener('touchend', e=>{
+  const t=e.changedTouches[0];
+  const dxs = t.clientX - tsx, dys = t.clientY - tsy;
+  if (Math.abs(dxs) < 20 && Math.abs(dys) < 20) return;
+  if (Math.abs(dxs) > Math.abs(dys)){ if (dxs > 0) setDir(1,0); else setDir(-1,0); }
+  else { if (dys > 0) setDir(0,1); else setDir(0,-1); }
+}, {passive:true});
+
+/* ========== Overlays ========== */
+btnRestart.addEventListener('click', ()=> initGame());
+
+/* ========== ЛИДЕРБОРД: интеграция с Google Apps Script (для модалки) ========== */
+const LB_URL = 'https://script.google.com/macros/s/AKfycbzgKYvvZRDvZTaHmMSDJpH0YsUyUIGiFhn8_Tixwz9mh78dG2cw1SbbBfBMDUkXnbj-/exec';
+
+function getPlayerName(){
+  let name = localStorage.getItem('hp_player_name');
+  if (!name) {
+    name = prompt('Как тебя подписать в таблице лидеров?') || 'Игрок';
+    name = name.trim().slice(0, 40);
+    localStorage.setItem('hp_player_name', name);
+  }
+  return name;
+}
+
+function getTelegramIdOrNull(){
+  const tg = window.Telegram?.WebApp;
+  const u = tg?.initDataUnsafe?.user;
+  return u?.id ? String(u.id) : '';
+}
+
+async function submitScoreSimple(score){
+  const username = getPlayerName();
+  const tg_id = getTelegramIdOrNull();
+  await fetch(LB_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ username, score, tg_id })
+  });
+}
+
+async function fetchLeaderboardSimple(){
+  const res = await fetch(LB_URL);
+  if (!res.ok) throw new Error('LB fetch failed');
+  return res.json();
+}
+
+// overlay logic
+const lbModal = document.getElementById('leaderboardModal');
+const lbList  = document.getElementById('lbList');
+const lbClose = document.getElementById('lbClose');
+
+function openLeaderboard(top=[], meName=null, myTgId=''){
+  lbList.innerHTML = '';
+  top.forEach((row, idx)=>{
+    const isMe = (myTgId && row.tg_id === myTgId) || (!myTgId && row.username === meName);
+    const li = document.createElement('li');
+    if (isMe) li.className = 'lb-item-me';
+    li.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:12px;">
+        <span>#${idx+1} ${row.username || 'Игрок'}${row.tg_id ? ' · tg:'+row.tg_id : ''}</span>
+        <strong>${row.score}</strong>
+      </div>`;
+    lbList.appendChild(li);
+  });
+  lbModal.hidden = false;
+}
+lbClose?.addEventListener('click', ()=> lbModal.hidden = true);
+lbModal?.addEventListener('click', e=>{ if(e.target===lbModal) lbModal.hidden=true; });
+
+// кнопка "Таблица лидеров"
+btnShare.addEventListener('click', async ()=>{
+  try {
+    const data = await fetchLeaderboardSimple();
+    openLeaderboard(data.top || [], localStorage.getItem('hp_player_name'), getTelegramIdOrNull());
+  } catch(e){
+    alert('Не удалось загрузить таблицу :(');
+    console.warn(e);
+  }
+});
+
+/* ========== Start ========== */
+resizeCanvas();
+initGame();
+
+/* debug */
+window._hp = { initGame, placeFood, food, extraFood, snake, stepDelay, scoreVar, pendingHairspray };
 </script>
 </body>
 </html>
-
 
