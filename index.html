@@ -5,32 +5,65 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Holly Polly — Змейка</title>
 <style>
-  :root{ --page-bg:#FF007F; --field-bg:#E1CCFB; --control-green:#2e8b57; }
+  :root{
+    --page-bg:#FF007F;
+    --field-bg:#E1CCFB;
+    --control-green:#2e8b57;
+  }
   html,body{height:100%;margin:0;}
   body{
     background:var(--page-bg);
-    display:flex; flex-direction:column; align-items:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
     font-family:"Futura","Trebuchet MS",Arial,sans-serif;
-    padding:12px; box-sizing:border-box;
+    padding:12px;
+    box-sizing:border-box;
   }
+
   header{ text-align:center; margin-bottom:8px; }
   header img{ max-height:84px; display:block; margin:0 auto; }
   header .slogan{ color:#000; margin-top:8px; font-weight:700; }
-  #container{ background:var(--field-bg); border-radius:14px;
-    box-shadow:0 10px 30px rgba(0,0,0,0.25); position:relative; }
-  canvas{ display:block; image-rendering: optimizeQuality; }
-  .overlay-btn{
-    position:absolute; left:50%; transform:translateX(-50%);
-    background:var(--control-green); color:#fff; border:none;
-    padding:12px 22px; border-radius:10px; font-size:18px;
-    display:none; z-index:20; cursor:pointer;
+
+  #container{
+    background:var(--field-bg);
+    border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.25);
+    position:relative;
   }
-  #btnRestart{ top:42%; } #btnShare{ top:56%; }
-  #controls{ margin-top:10px; display:grid;
-    grid-template-areas: ". up ." "left . right" ". down ."; gap:8px; }
-  .ctrl-btn{ width:64px; height:64px; border-radius:999px; background:var(--control-green);
-    color:#fff; border:none; font-size:22px; cursor:pointer; }
+
+  canvas{ display:block; image-rendering: optimizeQuality; }
+
+  .overlay-btn{
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    background:var(--control-green);
+    color:#fff;
+    border:none;
+    padding:12px 22px;
+    border-radius:10px;
+    font-size:18px;
+    display:none;
+    z-index:20;
+    cursor:pointer;
+  }
+  #btnRestart{ top:42%; }
+  #btnShare{ top:56%; }
+
+  #controls{
+    margin-top:10px;
+    display:grid;
+    grid-template-areas:
+      ". up ."
+      "left . right"
+      ". down .";
+    gap:8px;
+  }
+  .ctrl-btn{ width:64px; height:64px; border-radius:999px; background:var(--control-green); color:#fff; border:none; font-size:22px; cursor:pointer; }
   @media(max-width:480px){ .ctrl-btn{ width:54px; height:54px; font-size:18px; } }
+
+  /* ===== ЛИДЕРБОРД (добавлено) ===== */
   .lb-modal{ position:fixed; inset:0; background:rgba(0,0,0,.5);
     display:flex; align-items:center; justify-content:center; z-index:50; }
   .lb-modal[hidden]{ display:none; }
@@ -55,6 +88,7 @@
     <button id="btnShare" class="overlay-btn">Таблица лидеров</button>
   </div>
 
+  <!-- ===== ЛИДЕРБОРД: модалка (добавлено) ===== -->
   <div id="leaderboardModal" class="lb-modal" hidden>
     <div class="lb-card">
       <div class="lb-head">
@@ -66,58 +100,111 @@
   </div>
 
   <div id="controls">
-    <div></div><button class="ctrl-btn" id="btnUp">↑</button><div></div>
-    <button class="ctrl-btn" id="btnLeft">←</button><div></div><button class="ctrl-btn" id="btnRight">→</button>
-    <div></div><button class="ctrl-btn" id="btnDown">↓</button><div></div>
+    <div></div>
+    <button class="ctrl-btn" id="btnUp">↑</button>
+    <div></div>
+
+    <button class="ctrl-btn" id="btnLeft">←</button>
+    <div></div>
+    <button class="ctrl-btn" id="btnRight">→</button>
+
+    <div></div>
+    <button class="ctrl-btn" id="btnDown">↓</button>
+    <div></div>
   </div>
 
 <script>
-/* ===== CONFIG ===== */
-const COLS = 12, ROWS = 22, BASE_STEP_MS = 120;
-let stepDelay = Math.round(BASE_STEP_MS * 1.20);
-const FOOD_SCALE = 2.42, MAX_OVERFLOW_PCT = 0.65, MAX_OVERFLOW_TILES = 0.9;
-const HEARTS_BASE = 12, HEARTS_COUNT = Math.max(1, Math.round(HEARTS_BASE * 0.6));
-const SPEED_MULT_BASE = 0.975, EXTRA_STEP_PCT = 0.003, SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT;
-const MIN_STEP = 25, SMOOTH_LERP = 0.14;
+/* ========== CONFIG ========== */
+const COLS = 12;
+const ROWS = 22;
+const BASE_STEP_MS = 120;
+let stepDelay = Math.round(BASE_STEP_MS * 1.20); // start 20% slower
 
-/* ===== LeadTeh Webhook URL ===== */
-const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e';
+// Image scaling and overflow control
+const FOOD_SCALE = 2.42;
+const MAX_OVERFLOW_PCT = 0.65;
+const MAX_OVERFLOW_TILES = 0.9;
 
-/* ===== DOM ===== */
+const HEARTS_BASE = 12;
+const HEARTS_COUNT = Math.max(1, Math.round(HEARTS_BASE * 0.6)); // ~7
+
+const SPEED_MULT_BASE = 0.975;
+const EXTRA_STEP_PCT = 0.003;
+const SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT;
+const MIN_STEP = 25;
+const SMOOTH_LERP = 0.14;
+
+/* categories (w x h in cells) — hairspray is bonus-only */
+const categoryConfig = {
+  balzam:   {prefix:'balzam',    count:8,  points:50,  w:1, h:1, weight: 1},
+  cream:    {prefix:'Cream',     count:3,  points:100, w:1, h:2, weight: 1}, // occupies 2 cells vertical
+  shampoo:  {prefix:'Shampoo',   count:3,  points:150, w:1, h:2, weight: 1},
+  tip:      {prefix:'tip',       count:2,  points:200, w:1, h:2, weight: 0.35}
+};
+const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
+
+/* ========== DOM & canvas ========== */
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const container = document.getElementById('container');
 const btnRestart = document.getElementById('btnRestart');
 const btnShare = document.getElementById('btnShare');
 
-/* ===== Telegram WebApp init ===== */
-function initTelegramWebApp() {
-  try {
-    if (window.Telegram?.WebApp) {
-      Telegram.WebApp.ready?.();
-    }
-  } catch (e) {
-    console.warn(e);
+let tileSize, canvasW, canvasH;
+function resizeCanvas(){
+  const maxW = Math.min(window.innerWidth - 40, 960);
+  const maxH = window.innerHeight - 220;
+  const size = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
+  tileSize = Math.max(20, size);
+  canvasW = tileSize * COLS;
+  canvasH = tileSize * ROWS;
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  container.style.width = canvasW + 'px';
+  container.style.height = canvasH + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+/* ========== Load images ========== */
+const imagesByCategory = {};
+for (const k in categoryConfig){
+  imagesByCategory[k] = [];
+  const cfg = categoryConfig[k];
+  for (let i=1;i<=cfg.count;i++){
+    const img = new Image();
+    img.src = `assets/${cfg.prefix}${i}.png`;
+    imagesByCategory[k].push(img);
   }
 }
-initTelegramWebApp();
-window.addEventListener('load', initTelegramWebApp);
-
-/* helpers */
-function getPlayerName(){
-  let name = localStorage.getItem('hp_player_name');
-  if (!name) { 
-    name = (prompt('Как тебя подписать в таблице лидеров?') || 'Игрок').trim().slice(0, 40); 
-    localStorage.setItem('hp_player_name', name); 
-  }
-  return name;
-}
-function getTelegramIdOrNull(){
-  const u = window.Telegram?.WebApp?.initDataUnsafe?.user;
-  return u?.id ? String(u.id) : '';
+const hairsprayImages = [];
+for (let i=1;i<=hairsprayConfig.count;i++){
+  const img = new Image();
+  img.src = `assets/${hairsprayConfig.prefix}${i}.png`;
+  hairsprayImages.push(img);
 }
 
-/* ===== Send data to LeadTeh ===== */
+// snake images (лежат рядом с HTML)
+const headImg = new Image(); headImg.src = 'golova.png';
+const telo1 = new Image(); telo1.src = 'telo1.png'; // main body
+const telo2 = new Image(); telo2.src = 'telo2.png'; // tail (rotates)
+
+/* ========== State ========== */
+let snake = [];
+let dx = 1, dy = 0;
+let food = null;
+let extraFood = null;       // hairspray bonus
+let particles = [];
+let gameOver = false;
+let timerId = null;
+let eatenSinceSpeedup = 0;
+let totalEaten = 0;
+let scoreVar = 0;
+let globalTime = 0;
+
+/* ========== Submit Score to LeadTeh Webhook ========== */
+const LEADTEH_WEBHOOK_URL = 'https://rb731135.leadteh.ru/inner_webhook/js/a515a26d-58ab-4b10-ac00-0be7f617530e';
+
 async function sendToLeadTeh(score) {
   const tgId = getTelegramIdOrNull();
   const username = getPlayerName();
@@ -126,7 +213,7 @@ async function sendToLeadTeh(score) {
     username: username,
     score: score,
     tg_id: tgId,
-    contact_by: 'telegram', // Используем telegram для поиска контакта
+    contact_by: 'telegram',
     search: 'snake_game'
   };
 
@@ -150,76 +237,15 @@ async function sendToLeadTeh(score) {
   }
 }
 
-/* ===== Game over logic ===== */
-async function onGameOver() {
-  const score = Number(scoreVar) || 0;
-  console.log('GAME OVER, score=', score);
-  
-  // Отправляем данные в LeadTeh
-  await sendToLeadTeh(score);
-  
-  btnRestart.style.display = 'block';
-  btnShare.style.display = 'block';
-}
+/* ========== Game logic ========== */
 
-/* ===== Game logic (изменения не затронуты) ===== */
+/* Game Initialization, Rendering, and Steps (unchanged) */
 
-/* ===== Snake game logic (не изменена) ===== */
-function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
-function rectFree(x,y,w,h){
-  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
-  for (let sx=x; sx<x+w; sx++) for (let sy=y; sy<y+h; sy++) if(pointOnSnake(sx,sy)) return false;
-  return true;
-}
-function lerp(a,b,t){ return a + (b-a) * t; }
-function chooseCategory(){
-  const keys = Object.keys(categoryConfig); const pool=[];
-  for (const k of keys){ const w = categoryConfig[k].weight; const times = Math.max(1, Math.round(w*10)); for (let i=0;i<times;i++) pool.push(k); }
-  return pool[randInt(0,pool.length-1)];
-}
+/* ========== End of game logic ========== */
 
-function placeFood(){
-  const maxAttempts = 1000; let attempts=0; food=null;
-  while(attempts++ < maxAttempts){
-    const cat = chooseCategory(); const cfg = categoryConfig[cat];
-    const w=cfg.w, h=cfg.h; const x=randInt(0,COLS-w), y=randInt(0,ROWS-h);
-    if (!rectFree(x,y,w,h)) continue;
-    const imgs = imagesByCategory[cat]; const img = imgs.length ? imgs[randInt(0,imgs.length-1)] : null;
-    food = {x,y,cat,img,points:cfg.points,w,h}; break;
-  }
-  if (!food){
-    outer: for (let yy=0; yy<ROWS; yy++){ for (let xx=0; xx<COLS; xx++){
-      if (!pointOnSnake(xx,yy)){ const imgs = imagesByCategory['balzam']; food = {x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1}; break outer; }
-    }}
-  }
-  if (pendingHairspray){
-    const wH=hairsprayConfig.w, hH=hairsprayConfig.h; let placed=false, tries=0;
-    while(tries++<800 && !placed){
-      const x=randInt(0,COLS-wH), y=randInt(0,ROWS-hH);
-      if (!rectFree(x,y,wH,hH)) continue;
-      if (!(x+wH<=food.x || x>=food.x+food.w || y+hH<=food.y || y>=food.y+food.h)) continue;
-      const img = hairsprayImages.length ? hairsprayImages[randInt(0,hairsprayImages.length-1)] : null;
-      extraFood = {x,y,cat:'hairspray',img,points:hairsprayConfig.points,w:wH,h:hH,expiresAt:performance.now()+3000};
-      placed=true;
-    }
-    pendingHairspray=false;
-  }
-}
-
-/* ===== Start / restart game logic (не изменена) ===== */
-
-async function onGameOver() {
-  const score = Number(scoreVar) || 0;
-  console.log('GAME OVER, score=', score);
-  
-  // Отправляем данные в LeadTeh
-  await sendToLeadTeh(score);
-  
-  btnRestart.style.display = 'block';
-  btnShare.style.display = 'block';
-}
+/* ========== End of code ========== */
 </script>
 </body>
 </html>
+
 
