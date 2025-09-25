@@ -8,7 +8,7 @@
 <!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<!-- Прелоад ключевых спрайтов змейки -->
+<!-- Прелоад основных спрайтов -->
 <link rel="preload" as="image" href="golova.png">
 <link rel="preload" as="image" href="telo1.png">
 <link rel="preload" as="image" href="telo2.png">
@@ -19,15 +19,15 @@
     --field-bg:#E1CCFB;
     --control-green:#2e8b57;
 
-    /* размер джойстика (JS его динамически подгоняет) */
-    --ctrl-size: 80px;
+    /* базовый размер джойстика; JS динамически подгонит */
+    --ctrl-size: 92px;
     --ctrl-gap: 10px;
   }
 
   html,body{
     height:100dvh;
     margin:0;
-    overflow:hidden;               /* без вертикального скролла */
+    overflow:hidden;
     background:var(--page-bg);
     -webkit-touch-callout:none;
     -webkit-text-size-adjust:100%;
@@ -39,8 +39,8 @@
     font-family:"Futura","Trebuchet MS",Arial,sans-serif;
     padding:12px;
     box-sizing:border-box;
-    overscroll-behavior:contain;   /* не тянуть страницу при свайпах */
-    touch-action:none;             /* отключить системные жесты прокрутки */
+    overscroll-behavior:contain;
+    touch-action:none; /* гасим системные жесты прокрутки */
   }
 
   header{ text-align:center; margin-bottom:8px; user-select:none; }
@@ -61,6 +61,7 @@
     touch-action:none;
   }
 
+  /* Оверлей-кнопки поверх канваса */
   .overlay-btn{
     position:absolute;
     left:50%;
@@ -72,12 +73,15 @@
     border-radius:12px;
     font-size:18px;
     display:none;
-    z-index:20;
+    z-index:30;              /* выше всего */
     cursor:pointer;
+    pointer-events:auto;
   }
-  #btnRestart{ top:42%; }
-  #btnShare{ top:56%; }
+  /* Чуть дальше друг от друга */
+  #btnRestart{ top:38%; }
+  #btnShare{   top:62%; }
 
+  /* Блок кнопок управления */
   #controls{
     margin-top:10px;
     display:grid;
@@ -96,14 +100,23 @@
     background:var(--control-green);
     color:#fff;
     border:none;
-    font-size:calc(var(--ctrl-size) * 0.35);
+    font-size:calc(var(--ctrl-size) * 0.36);
     cursor:pointer;
   }
 
-  /* iPhone маленькие экраны — если JS не подогнал, перестрахуемся */
   @media (max-width:380px){
-    :root{ --ctrl-size: 66px; }
+    :root{ --ctrl-size: 82px; }
   }
+
+  /* Модалка лидерборда (коротко) */
+  .lb-modal{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .lb-modal[hidden]{ display:none; }
+  .lb-card{ background:#fff; border-radius:14px; width:min(520px,92vw); box-shadow:0 10px 40px rgba(0,0,0,.35); padding:14px 16px; }
+  .lb-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .lb-head h3{ margin:0; font-size:20px; }
+  .lb-close{ background:#eee; border:none; border-radius:8px; padding:6px 10px; cursor:pointer; }
+  .lb-list{ margin:8px 0 0; padding:0 18px 12px; max-height:60vh; overflow:auto; }
+  .lb-item-me{ background:#FFEBF7; border-radius:10px; padding:4px 8px; }
 </style>
 </head>
 <body>
@@ -115,14 +128,14 @@
   <div id="container">
     <canvas id="game"></canvas>
     <button id="btnRestart" class="overlay-btn">Заново</button>
-    <button id="btnShare" class="overlay-btn">Таблица лидеров</button>
+    <button id="btnShare"   class="overlay-btn">Таблица лидеров</button>
   </div>
 
   <!-- Лидерборд -->
   <div id="leaderboardModal" class="lb-modal" hidden>
     <div class="lb-card">
       <div class="lb-head">
-        <h3>Таблица лидеров</h3>
+        <h3>Топ-10 игроков</h3>
         <button id="lbClose" class="lb-close">✕</button>
       </div>
       <ol id="lbList" class="lb-list"></ol>
@@ -139,13 +152,13 @@
 <script>
 /* ====== Настройки ====== */
 const LB_URL = 'https://script.google.com/macros/s/AKfycbwWwEFARyVpWEqLUcQ5FCAUUy6EDf8xXxVdC1FuyaYfGkySRK6e7Ryq_nM2X2RWn3YZ/exec'; // ваш GAS /exec
-const COLS = 14;                 // ← 14 по горизонтали
-const ROWS = 16;                 // ← 16 по вертикали
+const COLS = 16;             // горизонталь
+const ROWS = 20;             // вертикаль
 const BASE_STEP_MS = 120;
 let stepDelay = Math.round(BASE_STEP_MS * 1.20);
 
 /* Retina canvas */
-const RENDER_SCALE = 2;          // 1 как раньше; 2 — в 2 раза больше внутренних пикселей
+const RENDER_SCALE = 2;
 let DPR = 1;
 
 /* ====== Telegram bootstrap ====== */
@@ -154,7 +167,7 @@ let DPR = 1;
     if (Telegram?.WebApp){
       Telegram.WebApp.ready();
       Telegram.WebApp.expand?.();
-      Telegram.WebApp.disableVerticalSwipes?.();  // где доступно — блок жеста сворачивания
+      Telegram.WebApp.disableVerticalSwipes?.();
     }
   }catch(e){}
 })();
@@ -174,37 +187,29 @@ const headerEl = document.querySelector('header'); const controlsEl = document.g
 let tileSize,canvasW,canvasH;
 
 function fitLayout(){
-  // динамически уменьшаем джойстик и подбираем tileSize так, чтобы всё влезло в 100dvh без скролла
+  // всё должно влезть на 100dvh: подбираем размер кнопок и tileSize
   const vw = window.innerWidth;
   const vh = (window.visualViewport?.height || window.innerHeight);
 
-  let ctrlSize = 84;                     // начальный желаемый размер
-  const minCtrl = 58;                    // минимум
+  let ctrlSize = 96;                   // хотим крупнее
+  const minCtrl = 64;                  // но не меньше этого
   const gap = 10;
 
   for (;;){
-    // применяем текущий размер к CSS
     document.documentElement.style.setProperty('--ctrl-size', ctrlSize + 'px');
-    document.documentElement.style.setProperty('--ctrl-gap', gap + 'px');
+    document.documentElement.style.setProperty('--ctrl-gap',  gap + 'px');
 
     const headerH = headerEl.getBoundingClientRect().height;
-    const ctrlH = ctrlSize*3 + gap*2;   // 3 кнопочных ряда + 2 зазора
-    const freeH = vh - headerH - ctrlH - 24;  // запас
+    const ctrlH   = ctrlSize*3 + gap*2;
+    const freeH   = vh - headerH - ctrlH - 24;
 
-    // ограничение по ширине и высоте
-    const maxW = Math.min(vw - 40, 960);
+    const maxW    = Math.min(vw - 40, 960);
     const sizeByW = Math.floor(maxW / COLS);
     const sizeByH = Math.floor(freeH / ROWS);
-
     const candidate = Math.min(sizeByW, sizeByH);
 
-    if (candidate >= 20) {
-      tileSize = candidate;
-      break;
-    }
-    // не влезает — уменьшаем джойстик и пробуем снова
+    if (candidate >= 20) { tileSize = candidate; break; }
     if (ctrlSize > minCtrl) { ctrlSize -= 4; continue; }
-    // крайний случай: фиксируем минимумы
     tileSize = Math.max(20, candidate);
     break;
   }
@@ -217,19 +222,16 @@ function resizeCanvas(){
   const cssH = tileSize * ROWS;
   canvasW = cssW; canvasH = cssH;
 
-  // CSS-габариты (внешние) — чтобы геометрия осталась прежней
   canvas.style.width  = cssW + 'px';
   canvas.style.height = cssH + 'px';
   container.style.width  = cssW + 'px';
   container.style.height = cssH + 'px';
 
-  // внутренняя плотность пикселей
   const device = window.devicePixelRatio || 1;
   DPR = Math.min(3, device * RENDER_SCALE);
   canvas.width  = Math.round(cssW * DPR);
   canvas.height = Math.round(cssH * DPR);
 
-  // рисуем в "обычных" координатах
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.imageSmoothingEnabled = true;
 }
@@ -241,7 +243,7 @@ resizeCanvas();
 function mkImg(src){
   const img = new Image();
   img.decoding = 'async';
-  img.loading = 'eager';
+  img.loading  = 'eager';
   img.src = src;
   return img;
 }
@@ -306,16 +308,25 @@ function initGame(){
   food=null; extraFood=null; pendingHairspray=false; particles=[]; gameOver=false;
   eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
   placeFood();
-  btnRestart.style.display='none'; btnShare.style.display='none';
-  if(timerId) clearTimeout(timerId);
+
+  // показать/спрятать
+  btnRestart.style.display='none';
+  btnShare.style.display='none';
+
+  if (timerId) clearTimeout(timerId);
   scheduleNextStep();
   requestAnimationFrame(renderLoop);
 }
 
 /* ====== Рендер ====== */
-function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
-  ctx.save(); ctx.translate(cx,cy); ctx.rotate(rotation); ctx.globalAlpha=alpha;
-  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI*2); ctx.fillStyle=fillStyle; ctx.fill(); ctx.restore();
+function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  ctx.restore();
 }
 function computeImageDrawRect(areaLeft,areaTop,areaW,areaH){
   const desiredW=Math.round(areaW*FOOD_SCALE), desiredH=Math.round(areaH*FOOD_SCALE);
@@ -329,14 +340,14 @@ function drawSingleFood(it, nowSec){
   if (!it) return;
   const cellsW=it.w, cellsH=it.h, areaW=tileSize*cellsW, areaH=tileSize*cellsH, areaLeft=it.x*tileSize, areaTop=it.y*tileSize;
 
-  // бонус подсветка — теперь вертикальная
+  // ВЕРТИКАЛЬНАЯ пульсация для бонуса
   if (it.cat==='hairspray'){
     const pulse=1+0.20*Math.sin(nowSec*4+it.x*1.7+it.y*0.9);
     const cx=Math.round(areaLeft+areaW/2), cy=Math.round(areaTop+areaH/2+tileSize*0.08);
     const base=Math.min(areaW,areaH);
-    const rx=Math.max(8, Math.round((base/2 + 8) * pulse * 0.82));   // уже по X
-    const ry=Math.max(10, Math.round((base/2 + 12) * pulse));        // выше по Y
-    drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98, Math.PI/2); // повернули на 90°
+    const rx=Math.max(8,  Math.round((base/2 + 6)  * 0.78));          // уже по X
+    const ry=Math.max(12, Math.round((base/2 + 14) * pulse));         // выше по Y
+    drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98);  // без поворота — форма уже вертикальная
   }
 
   if (it.img && it.img.complete && it.img.naturalWidth && it.img.naturalHeight){
@@ -482,15 +493,20 @@ document.getElementById('btnUp').addEventListener('click', ()=> setDir(0,-1));
 document.getElementById('btnDown').addEventListener('click', ()=> setDir(0,1));
 document.getElementById('btnLeft').addEventListener('click', ()=> setDir(-1,0));
 document.getElementById('btnRight').addEventListener('click', ()=> setDir(1,0));
+/* дублируем на touchstart, чтобы на iOS клики не «залипали» */
+document.getElementById('btnUp').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(0,-1); }, {passive:false});
+document.getElementById('btnDown').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(0,1); }, {passive:false});
+document.getElementById('btnLeft').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(-1,0); }, {passive:false});
+document.getElementById('btnRight').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(1,0); }, {passive:false});
 
-/* ====== Свайпы для мобильных ====== */
+/* ====== Свайпы: только на поле (кнопки не трогаем) ====== */
 let touchStartX=0, touchStartY=0, swiping=false;
 const SWIPE_THRESH = 22;
 
 function onTouchStart(e){
   const t = e.touches[0];
   touchStartX = t.clientX; touchStartY = t.clientY; swiping = true;
-  e.preventDefault(); // не скроллить страницу
+  e.preventDefault();
 }
 function onTouchMove(e){
   if (!swiping) return;
@@ -498,14 +514,14 @@ function onTouchMove(e){
   const dx = t.clientX - touchStartX;
   const dy = t.clientY - touchStartY;
   if (Math.abs(dx) < SWIPE_THRESH && Math.abs(dy) < SWIPE_THRESH) return;
-  if (Math.abs(dx) > Math.abs(dy)){ setDir(dx>0?1: -1, 0); }
-  else { setDir(0, dy>0?1: -1); }
+  if (Math.abs(dx) > Math.abs(dy)){ setDir(dx>0?1:-1,0); }
+  else { setDir(0, dy>0?1:-1); }
   swiping = false;
   e.preventDefault();
 }
 function onTouchEnd(e){ swiping=false; e.preventDefault(); }
 
-[canvas, container, controlsEl].forEach(el=>{
+[canvas, container].forEach(el=>{
   el.addEventListener('touchstart', onTouchStart, {passive:false});
   el.addEventListener('touchmove',  onTouchMove,  {passive:false});
   el.addEventListener('touchend',   onTouchEnd,   {passive:false});
@@ -530,7 +546,9 @@ async function sendScoreToSheets({username, score, tg_id}){
   }catch(e){ return {ok:false, error:String(e)}; }
 }
 async function getTopFromSheets(){
-  const res = await fetch(LB_URL); if (!res.ok) throw new Error('LB fetch failed'); return res.json();
+  const res = await fetch(LB_URL);
+  if (!res.ok) throw new Error('LB fetch failed');
+  return res.json();
 }
 
 /* ====== Конец игры ====== */
@@ -541,20 +559,23 @@ async function onGameOver(){
 
   try { await sendScoreToSheets({ username, score, tg_id }); } catch(e){ console.warn('GAS send err', e); }
 
+  // показать кнопки и гарантировать разнесение
   btnRestart.style.display='block';
   btnShare.style.display='block';
 }
+btnRestart.addEventListener('click',  ()=> initGame());
+btnRestart.addEventListener('touchstart', e=>{ e.preventDefault(); initGame(); }, {passive:false});
 
 /* ====== Лидерборд ====== */
 const lbModal=document.getElementById('leaderboardModal'); const lbList=document.getElementById('lbList'); const lbClose=document.getElementById('lbClose');
 function openLeaderboard(top=[], meName=null, myTgId=''){
   lbList.innerHTML='';
-  top.forEach((row,idx)=>{
+  top.slice(0,10).forEach((row,idx)=>{     // только ТОП-10
     const isMe=(myTgId && row.tg_id==myTgId)||(!myTgId && row.username===meName);
     const li=document.createElement('li'); if(isMe) li.className='lb-item-me';
     li.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;">
-      <span>#${idx+1} ${row.username||'Игрок'}${row.tg_id?' · tg:'+row.tg_id:''}</span>
-      <strong>${row.score}</strong></div>`;
+      <span>#${idx+1} ${row.username || 'Игрок'}</span>
+      <strong>${row.score}</strong></div>`;   /* tg_id пользователям не показываем */
     lbList.appendChild(li);
   });
   lbModal.hidden=false;
@@ -567,9 +588,6 @@ btnShare.addEventListener('click', async ()=>{
   catch(e){ alert('Не удалось загрузить таблицу :('); console.warn(e); }
 });
 
-/* ====== Restart: починили ====== */
-btnRestart.addEventListener('click', ()=> initGame());
-
 /* ====== Старт ====== */
 resizeCanvas();
 initGame();
@@ -577,5 +595,4 @@ requestAnimationFrame(renderLoop);
 </script>
 </body>
 </html>
-
 
