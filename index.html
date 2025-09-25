@@ -19,8 +19,10 @@
     --field-bg:#E1CCFB;
     --control-green:#2e8b57;
 
-    --ctrl-size: 100px;  /* базовый размер джойстика, JS подгонит */
+    --ctrl-size: 100px;  /* базовый размер джойстика; JS подгонит */
     --ctrl-gap: 12px;
+
+    --safe-bottom: env(safe-area-inset-bottom);
   }
 
   html,body{
@@ -37,6 +39,7 @@
     align-items:center;
     font-family:"Futura","Trebuchet MS",Arial,sans-serif;
     padding:12px;
+    padding-bottom:calc(12px + var(--safe-bottom, 0px));
     box-sizing:border-box;
     overscroll-behavior:contain;
     touch-action:none; /* гасим системные жесты скролла */
@@ -51,7 +54,7 @@
     border-radius:14px;
     box-shadow:0 10px 30px rgba(0,0,0,0.25);
     position:relative;
-    /* важное: не ставим тут touch-action:none; чтобы кнопки внутри работали */
+    /* не блокируем touch внутри контейнера, чтобы кнопки работали */
   }
 
   canvas{
@@ -92,7 +95,7 @@
       ". down .";
     gap:var(--ctrl-gap);
     user-select:none;
-    /* тут не блокируем touch-action, чтобы клики генерились стабильно */
+    margin-bottom:var(--safe-bottom, 0px);
   }
   .ctrl-btn{
     width:var(--ctrl-size);
@@ -120,6 +123,20 @@
   .lb-close{ background:#eee; border:none; border-radius:8px; padding:6px 10px; cursor:pointer; touch-action:manipulation; }
   .lb-list{ margin:8px 0 0; padding:0 18px 12px; max-height:60vh; overflow:auto; }
   .lb-item-me{ background:#FFEBF7; border-radius:10px; padding:4px 8px; }
+  .lb-top5{ background:#FFF4BF; border-radius:10px; } /* топ-5 — жёлтая заливка */
+
+  /* Панель загрузки */
+  #loadingPanel{
+    position:fixed; inset:0; z-index:60;
+    background:rgba(0,0,0,.55);
+    display:none; align-items:center; justify-content:center;
+  }
+  #loadingPanel .box{
+    background:#fff; color:#111;
+    border-radius:12px; padding:16px 20px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+    font-weight:600;
+  }
 </style>
 </head>
 <body>
@@ -133,6 +150,9 @@
     <button id="btnRestart" class="overlay-btn">Заново</button>
     <button id="btnShare"   class="overlay-btn">Таблица лидеров</button>
   </div>
+
+  <!-- Панель "Загрузка..." -->
+  <div id="loadingPanel"><div class="box">Загрузка…</div></div>
 
   <!-- Лидерборд -->
   <div id="leaderboardModal" class="lb-modal" hidden>
@@ -186,16 +206,16 @@ function getTgUsername(){
 const canvas=document.getElementById('game'); const ctx=canvas.getContext('2d');
 const container=document.getElementById('container'); const btnRestart=document.getElementById('btnRestart'); const btnShare=document.getElementById('btnShare');
 const headerEl = document.querySelector('header'); const controlsEl = document.getElementById('controls');
+const loadingPanel = document.getElementById('loadingPanel');
 
 let tileSize,canvasW,canvasH;
 
 function fitLayout(){
-  // всё должно влезть в 100dvh без скролла
   const vw = window.innerWidth;
   const vh = (window.visualViewport?.height || window.innerHeight);
 
-  let ctrlSize = 104;                  // реально крупнее
-  const minCtrl = 66;
+  let ctrlSize = 104;
+  const minCtrl = 56;              // ↓ позволяем сильнее ужимать, чтобы влезло
   const gap = 12;
 
   for (;;){
@@ -204,7 +224,7 @@ function fitLayout(){
 
     const headerH = headerEl.getBoundingClientRect().height;
     const ctrlH   = ctrlSize*3 + gap*2;
-    const freeH   = vh - headerH - ctrlH - 24;
+    const freeH   = vh - headerH - ctrlH - 24 - (parseFloat(getComputedStyle(document.body).paddingBottom)||0);
 
     const maxW    = Math.min(vw - 40, 960);
     const sizeByW = Math.floor(maxW / COLS);
@@ -212,9 +232,9 @@ function fitLayout(){
 
     const candidate = Math.min(sizeByW, sizeByH);
 
-    if (candidate >= 20) { tileSize = candidate; break; }
+    if (candidate >= 18) { tileSize = candidate; break; } // можно чуть меньше 20 для влезания
     if (ctrlSize > minCtrl) { ctrlSize -= 4; continue; }
-    tileSize = Math.max(20, candidate);
+    tileSize = Math.max(14, candidate);                   // крайний случай
     break;
   }
 }
@@ -313,7 +333,6 @@ function initGame(){
   eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
   placeFood();
 
-  // спрятать оверлей-кнопки
   btnRestart.style.display='none';
   btnShare.style.display='none';
 
@@ -335,7 +354,7 @@ function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1){
 function computeImageDrawRect(areaLeft,areaTop,areaW,areaH){
   const desiredW=Math.round(areaW*FOOD_SCALE), desiredH=Math.round(areaH*FOOD_SCALE);
   const allowedOverflowW=Math.min(Math.round(areaW*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const allowedOverflowH=Math.min(Math.round(areaH*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
+  const allowedOverflowH=Math.min(Math.round(Math.max(1,areaH*MAX_OVERFLOW_PCT)),Math.round(tileSize*MAX_OVERFLOW_TILES));
   const maxAllowedW=areaW+allowedOverflowW, maxAllowedH=areaH+allowedOverflowH;
   let drawW=Math.min(desiredW,maxAllowedW), drawH=Math.min(desiredH,maxAllowedH);
   return {drawW,drawH,areaLeft,areaTop,areaW,areaH,maxAllowedW,maxAllowedH};
@@ -344,13 +363,13 @@ function drawSingleFood(it, nowSec){
   if (!it) return;
   const cellsW=it.w, cellsH=it.h, areaW=tileSize*cellsW, areaH=tileSize*cellsH, areaLeft=it.x*tileSize, areaTop=it.y*tileSize;
 
-  // ВЕРТИКАЛЬНАЯ пульсация для bonus (явно вытянута по Y)
+  // ВЕРТИКАЛЬНАЯ пульсация для бонуса (жёлтый овал)
   if (it.cat==='hairspray'){
-    const pulse=1+0.22*Math.sin(nowSec*4.2+it.x*1.7+it.y*0.9);
+    const pulse=1 + 0.22 * Math.sin(nowSec*4.2 + it.x*1.7 + it.y*0.9);
     const cx=Math.round(areaLeft+areaW/2), cy=Math.round(areaTop+areaH/2);
     const base=Math.min(areaW,areaH);
-    const rx=Math.max(6,  Math.round((base*0.25)));             // уже по X
-    const ry=Math.max(12, Math.round((base*0.55) * pulse));      // выше по Y
+    const rx=Math.max(6,  Math.round(base*0.22));             // уже по X
+    const ry=Math.max(12, Math.round(base*0.50 * pulse));     // выше по Y (пульс)
     drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98);
   }
 
@@ -370,20 +389,17 @@ function drawSingleFood(it, nowSec){
 }
 function drawFood(nowSec){ drawSingleFood(food,nowSec); if(extraFood) drawSingleFood(extraFood,nowSec); }
 
-/* === Рисуем змейку с поворотом сегментов === */
+/* === Змейка с поворотом сегментов === */
 function drawSnake(){
-  // сглаживаем положения
   for (let i=0;i<snake.length;i++){
     const s=snake[i], tx=s.x*tileSize+tileSize/2, ty=s.y*tileSize+tileSize/2;
     s.px=lerp(s.px,tx,SMOOTH_LERP); s.py=lerp(s.py,ty,SMOOTH_LERP);
   }
 
-  // тело (включая повороты)
   for (let i=1; i<snake.length; i++){
     const s = snake[i];
     const size = Math.max(6, Math.floor(tileSize * 1.06));
 
-    // хвост — отдельный спрайт с поворотом на соседа
     if (i === snake.length - 1){
       if (telo2 && telo2.complete && telo2.naturalWidth){
         const tail = snake[snake.length - 1];
@@ -404,10 +420,9 @@ function drawSnake(){
       continue;
     }
 
-    // обычные сегменты тела — поворачиваем по направлению (между prev и next)
     if (telo1 && telo1.complete && telo1.naturalWidth){
       const prev = snake[i-1];
-      const next = snake[i+1] || snake[i];  // на случай короткой змейки
+      const next = snake[i+1] || snake[i];
       const angle = Math.atan2(next.py - prev.py, next.px - prev.px);
 
       ctx.save();
@@ -426,7 +441,6 @@ function drawSnake(){
     }
   }
 
-  // голова с поворотом
   const head = snake[0];
   const hx = head.px, hy = head.py;
   const headScale = 1.42;
@@ -485,14 +499,20 @@ function renderLoop(ts){
 }
 
 /* ====== Частицы ====== */
+/* Замедлили на 20% и увеличили жизнь */
+const PARTICLE_SPEED_MULT = 0.48; // было ~0.6 -> стало на 20% медленнее
+const PARTICLE_LIFE_BASE  = 48;   // +20%
+const PARTICLE_LIFE_RAND  = 48;
+
 function spawnParticlesAt(cellX,cellY,cellsW,cellsH,cat){
-  const cx=(cellX+cellsW/2)*tileSize, cy=(cellY+cellsH/2)*tileSize, char=(cat==='hairspray')?'⭐️':'❤️', SLOW_MULT=0.6;
+  const cx=(cellX+cellsW/2)*tileSize, cy=(cellY+cellsH/2)*tileSize, char=(cat==='hairspray')?'⭐️':'❤️';
   for(let i=0;i<Math.max(3,HEARTS_COUNT);i++){
     const angle=Math.random()*Math.PI*2, baseSpeed=0.6+Math.random()*1.6;
     const vyBias=(cat==='hairspray')?-0.4-Math.random()*0.2:(Math.random()*0.4-0.2);
-    const life=40+Math.floor(Math.random()*40), size=tileSize*(0.45+Math.random()*0.8);
-    const vx=Math.cos(angle)*baseSpeed*(0.6+Math.random()*0.9)*SLOW_MULT;
-    const vy=(Math.sin(angle)*baseSpeed*(0.6+Math.random()*0.9)+vyBias)*SLOW_MULT;
+    const life=PARTICLE_LIFE_BASE + Math.floor(Math.random()*PARTICLE_LIFE_RAND);
+    const size=tileSize*(0.45+Math.random()*0.8);
+    const vx=Math.cos(angle)*baseSpeed*(0.6+Math.random()*0.9)*PARTICLE_SPEED_MULT;
+    const vy=(Math.sin(angle)*baseSpeed*(0.6+Math.random()*0.9)+vyBias)*PARTICLE_SPEED_MULT;
     particles.push({type:'emoji',char,x:cx+(Math.random()-0.5)*tileSize*0.2,y:cy+(Math.random()-0.5)*tileSize*0.2,vx,vy,size,life,maxLife:life});
   }
 }
@@ -542,13 +562,12 @@ document.getElementById('btnUp').addEventListener('click', ()=> setDir(0,-1));
 document.getElementById('btnDown').addEventListener('click', ()=> setDir(0,1));
 document.getElementById('btnLeft').addEventListener('click', ()=> setDir(-1,0));
 document.getElementById('btnRight').addEventListener('click', ()=> setDir(1,0));
-/* iOS — тапы без задержки */
 document.getElementById('btnUp').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(0,-1); }, {passive:false});
 document.getElementById('btnDown').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(0,1); }, {passive:false});
 document.getElementById('btnLeft').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(-1,0); }, {passive:false});
 document.getElementById('btnRight').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(1,0); }, {passive:false});
 
-/* ====== Свайпы: ТОЛЬКО на канвасе (чтобы не ломать кнопки) ====== */
+/* ====== Свайпы: ТОЛЬКО на канвасе ====== */
 let touchStartX=0, touchStartY=0, swiping=false;
 const SWIPE_THRESH = 22;
 
@@ -614,11 +633,16 @@ btnRestart.addEventListener('touchstart', e=>{ e.preventDefault(); initGame(); }
 
 /* ====== Лидерборд ====== */
 const lbModal=document.getElementById('leaderboardModal'); const lbList=document.getElementById('lbList'); const lbClose=document.getElementById('lbClose');
+
+function showLoading(on){ loadingPanel.style.display = on ? 'flex' : 'none'; }
+
 function openLeaderboard(top=[], meName=null, myTgId=''){
   lbList.innerHTML='';
   top.slice(0,10).forEach((row,idx)=>{     // только ТОП-10
     const isMe=(myTgId && row.tg_id==myTgId)||(!myTgId && row.username===meName);
-    const li=document.createElement('li'); if(isMe) li.className='lb-item-me';
+    const li=document.createElement('li');
+    if (idx < 5) li.classList.add('lb-top5');
+    if (isMe)   li.classList.add('lb-item-me');
     li.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;">
       <span>#${idx+1} ${row.username || 'Игрок'}</span>
       <strong>${row.score}</strong></div>`;   /* tg_id не показываем */
@@ -629,10 +653,20 @@ function openLeaderboard(top=[], meName=null, myTgId=''){
 lbClose?.addEventListener('click',()=> lbModal.hidden=true);
 lbModal?.addEventListener('click',e=>{ if(e.target===lbModal) lbModal.hidden=true; });
 
-btnShare.addEventListener('click', async ()=>{
-  try{ const data=await getTopFromSheets(); openLeaderboard(data.top||[], getTgUsername(), getTgId()); }
-  catch(e){ alert('Не удалось загрузить таблицу :('); console.warn(e); }
-});
+async function openLeadersFlow(){
+  showLoading(true);
+  try{
+    const data=await getTopFromSheets();
+    showLoading(false);
+    openLeaderboard(data.top||[], getTgUsername(), getTgId());
+  }catch(e){
+    showLoading(false);
+    alert('Не удалось загрузить таблицу :(');
+    console.warn(e);
+  }
+}
+btnShare.addEventListener('click', openLeadersFlow);
+btnShare.addEventListener('touchstart', e=>{ e.preventDefault(); openLeadersFlow(); }, {passive:false});
 
 /* ====== Старт ====== */
 resizeCanvas();
