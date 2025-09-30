@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>Holly Polly — Змейка</title>
 
-<!-- Telegram WebApp SDK -->
+<!-- Telegram WebApp SDK (если нужна интеграция) -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<!-- Прелоад основных спрайтов -->
+<!-- прелоады -->
 <link rel="preload" as="image" href="golova.png">
 <link rel="preload" as="image" href="telo1.png">
 <link rel="preload" as="image" href="telo2.png">
@@ -16,12 +16,9 @@
 
 <style>
   :root{
-    --page-bg:#FF007F;
-    --field-bg:#E1CCFB;
-    --control-green:#2e8b57;
-
-    --ctrl-size: 100px;
-    --ctrl-gap: 12px;
+    --page-bg: #ff4da6; /* розовый из твоего изображения */
+    --field-bg: #E1CCFB;
+    --control-green: #2e8b57;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
   }
 
@@ -29,23 +26,20 @@
     height:100dvh;
     min-height:100svh;
     margin:0;
-    overflow:hidden;
     background:var(--page-bg);
-    -webkit-touch-callout:none;
     -webkit-text-size-adjust:100%;
+    -webkit-touch-callout:none;
+    font-family:"Futura","Trebuchet MS",Arial,sans-serif;
+    overflow:hidden;
   }
   body{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    font-family:"Futura","Trebuchet MS",Arial,sans-serif;
-    padding:12px;
-    box-sizing:border-box;
+    display:flex; flex-direction:column; align-items:center;
+    padding:12px; box-sizing:border-box;
     overscroll-behavior:contain;
     touch-action:none;
   }
 
-  header{ text-align:center; margin-bottom:8px; user-select:none; }
+  header{ text-align:center; margin-bottom:8px; user-select:none; color:#000; width:100% }
   header img{ max-height:84px; display:block; margin:0 auto; }
   header .slogan{ color:#000; margin-top:8px; font-weight:700; }
 
@@ -54,121 +48,90 @@
     border-radius:14px;
     box-shadow:0 10px 30px rgba(0,0,0,0.25);
     position:relative;
+    touch-action:none;
   }
 
   canvas{
     display:block;
     image-rendering: optimizeQuality;
-    touch-action:none; /* свайпы только тут */
+    touch-action:none;
+    background:transparent;
+    border-radius:12px;
+    -webkit-user-select:none;
+    user-select:none;
   }
 
-  /* Оверлей-кнопки поверх канваса */
-  .overlay-btn{
-    position:absolute;
-    left:50%;
-    transform:translateX(-50%);
-    background:var(--control-green);
+  /* Подсказочный оверлей (старт / game over) */
+  .overlay-start{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:60;
+    pointer-events:auto;
+  }
+  .overlay-start .msg{
+    padding:14px 18px;
+    background:rgba(0,0,0,0.32);
     color:#fff;
-    border:none;
-    padding:16px 30px;
     border-radius:12px;
     font-size:18px;
-    display:none;
-    z-index:30;
-    cursor:pointer;
-    pointer-events:auto;
-    touch-action:manipulation;
-    -webkit-tap-highlight-color: transparent;
-  }
-  #btnRestart{ top:34%; }
-  #btnShare{   top:68%; }
-
-  /* Блок кнопок управления (крестовина) */
-  #controls{
-    margin-top:10px;
-    display:grid;
-    grid-template-areas:
-      ". up ."
-      "left . right"
-      ". down .";
-    gap:var(--ctrl-gap);
+    text-align:center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     user-select:none;
-    padding-bottom:calc(var(--safe-bottom) + 2px);
-  }
-  .ctrl-btn{
-    width:var(--ctrl-size);
-    height:var(--ctrl-size);
-    border-radius:999px;
-    background:var(--control-green);
-    color:#fff;
-    border:none;
-    font-size:calc(var(--ctrl-size) * 0.38);
-    cursor:pointer;
-    touch-action:manipulation;
-    -webkit-tap-highlight-color: transparent;
   }
 
-  @media (max-width:380px){
-    :root{ --ctrl-size: 90px; }
-  }
-
-  /* Модалка лидерборда */
-  .lb-modal{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:50; }
-  .lb-modal[hidden]{ display:none; }
-  .lb-card{ background:#fff; border-radius:14px; width:min(520px,92vw); box-shadow:0 10px 40px rgba(0,0,0,.35); padding:14px 16px; }
-  .lb-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .lb-head h3{ margin:0; font-size:20px; }
-  .lb-close{ background:#eee; border:none; border-radius:8px; padding:6px 10px; cursor:pointer; touch-action:manipulation; }
-  .lb-list{ margin:8px 0 0; padding:0 18px 12px; max-height:60vh; overflow:auto; }
-  .lb-item-me{ background:#FFEBF7; border-radius:10px; padding:4px 8px; }
-  .lb-top5{ background:#FFF7B2; border-radius:10px; padding:4px 8px; }
-  .lb-loading{ text-align:center; padding:18px 0; font-weight:600; }
+  /* Скрытые элементы управления (мы их убрали) */
+  #controls{ display:none; }
 </style>
 </head>
 <body>
   <header>
-    <img src="logo.png" alt="logo" decoding="async">
+    <img src="logo.png" alt="logo" decoding="async" />
     <div class="slogan">Holly Polly — твоя лучшая подруга!</div>
   </header>
 
-  <div id="container">
-    <canvas id="game"></canvas>
-    <button id="btnRestart" class="overlay-btn">Заново</button>
-    <button id="btnShare"   class="overlay-btn">Таблица лидеров</button>
-  </div>
+  <div id="container" role="application" aria-label="Игра Змейка">
+    <canvas id="game" aria-hidden="false"></canvas>
 
-  <!-- Лидерборд -->
-  <div id="leaderboardModal" class="lb-modal" hidden>
-    <div class="lb-card">
-      <div class="lb-head">
-        <h3 id="lbTitle">Топ-10 игроков</h3>
-        <button id="lbClose" class="lb-close">✕</button>
-      </div>
-      <div id="lbLoading" class="lb-loading" hidden>Загрузка…</div>
-      <ol id="lbList" class="lb-list"></ol>
+    <div id="startOverlay" class="overlay-start" aria-hidden="false">
+      <div id="startMsg" class="msg">Тапни, чтобы начать</div>
     </div>
   </div>
 
-  <!-- Крестовина -->
-  <div id="controls">
-    <div></div><button class="ctrl-btn" id="btnUp">↑</button><div></div>
-    <button class="ctrl-btn" id="btnLeft">←</button><div></div><button class="ctrl-btn" id="btnRight">→</button>
-    <div></div><button class="ctrl-btn" id="btnDown">↓</button><div></div>
-  </div>
-
 <script>
-/* ====== Настройки ====== */
+/* ================== CONFIG ================== */
 const LB_URL = 'https://script.google.com/macros/s/AKfycbwWwEFARyVpWEqLUcQ5FCAUUy6EDf8xXxVdC1FuyaYfGkySRK6e7Ryq_nM2X2RWn3YZ/exec';
-const COLS = 16;             // горизонталь
-const ROWS = 20;             // вертикаль
-const BASE_STEP_MS = 120;
-let stepDelay = Math.round(BASE_STEP_MS * 1.20);
 
-/* Retina canvas */
-const RENDER_SCALE = 2;
+// Размер поля (изменено)
+const COLS = 12;
+const ROWS = 22;
+
+const BASE_STEP_MS = 120;
+// стартовая задержка увеличена на 30% (т.е. игра медленнее)
+const START_SPEED_MULT = 1.30;
+let stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
+
+// ретина/рэндер-скейл, оптимизирован для мобильных устройств (не слишком большой DPR)
+const RENDER_SCALE = 1.5; // раньше был 2 — уменьшаем, чтобы снизить нагрузку
 let DPR = 1;
 
-/* ====== Telegram bootstrap ====== */
+/* параметры частиц (замедление + увеличение жизни) */
+const PARTICLE_SPEED_FACTOR = 0.32; // сильно уменьшили (медленнее)
+const PARTICLE_LIFE_BASE = 48;
+const PARTICLE_LIFE_RAND = 48;
+const PARTICLE_LIFE_FACTOR = 1.6;
+
+/* остальные настройки */
+const FOOD_SCALE = 2.42;
+const MAX_OVERFLOW_PCT = 0.65;
+const MAX_OVERFLOW_TILES = 0.9;
+const HEARTS_BASE = 12;
+const HEARTS_COUNT = Math.max(1, Math.round(HEARTS_BASE * 0.6));
+const SPEED_MULT_BASE = 0.975;
+const EXTRA_STEP_PCT = 0.003;
+const SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT;
+const MIN_STEP = 25;
+const SMOOTH_LERP = 0.14;
+
+/* ================== Telegram bootstrap ================== */
 (function tgReady(){
   try{
     if (Telegram?.WebApp){
@@ -180,93 +143,33 @@ let DPR = 1;
 })();
 function getTgUser(){ return Telegram?.WebApp?.initDataUnsafe?.user || null; }
 function getTgId(){ const u=getTgUser(); return u?.id ? String(u.id) : ''; }
-function getTgUsername(){
-  const u=getTgUser(); if (!u) return '';
-  if (u.username) return '@'+u.username;
-  const fn=u.first_name||'', ln=u.last_name||''; return (fn+' '+ln).trim() || 'Игрок';
-}
+function getTgUsername(){ const u=getTgUser(); if(!u) return ''; if(u.username) return '@'+u.username; const fn=u.first_name||'', ln=u.last_name||''; return (fn+' '+ln).trim() || 'Игрок'; }
 
-/* ====== Canvas / игра ====== */
-const canvas=document.getElementById('game'); const ctx=canvas.getContext('2d');
-const container=document.getElementById('container'); const btnRestart=document.getElementById('btnRestart'); const btnShare=document.getElementById('btnShare');
-const headerEl = document.querySelector('header'); const controlsEl = document.getElementById('controls');
+/* ================== DOM & canvas ================== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha:true });
+const container = document.getElementById('container');
+const startOverlay = document.getElementById('startOverlay');
+const startMsg = document.getElementById('startMsg');
 
-let tileSize,canvasW,canvasH;
+let tileSize, canvasW, canvasH;
 
-/* ---------- ФОН: цветы ---------- */
-const flowerImg = (function(){ const i=new Image(); i.decoding='async'; i.loading='eager'; i.src='flower.png'; return i; })();
-
-// детерминированный генератор и точки в процентах, чтобы не прыгали при ресайзе
-function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967295;}}
-const FLOWER_SEED = 1337;
-let flowers = []; // [{ux,uy,rot,scale} ...]
-
-function generateFlowers(){
-  flowers.length = 0;
-  const rng = mulberry32(FLOWER_SEED);
-  // плотность ~ 0.25 на клетку => около 80 для 16x20
-  const target = Math.round(COLS * ROWS * 0.25);
-  for (let i=0;i<target;i++){
-    const ux = rng();          // 0..1
-    const uy = rng();          // 0..1
-    const rot = (rng() - 0.5) * 0.9;     // легкий поворот
-    const scale = 0.8 + rng()*0.6;       // 0.8..1.4
-    flowers.push({ux,uy,rot,scale});
-  }
-}
-generateFlowers();
-
-function drawFlowers(){
-  if (!flowerImg.complete || !flowerImg.naturalWidth) return;
-  const base = Math.max(8, Math.floor(tileSize * 0.42)); // аккуратный размер
-  for (const f of flowers){
-    const x = Math.round(f.ux * canvasW);
-    const y = Math.round(f.uy * canvasH);
-    const size = Math.round(base * f.scale);
-    const w = size, h = size;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(f.rot);
-    ctx.globalAlpha = 0.8;     // фон чуть мягче
-    ctx.drawImage(flowerImg, -w/2, -h/2, w, h);
-    ctx.restore();
-  }
-}
-
-/* ---------- Автоподгон раскладки ---------- */
+/* ===== оптимизированный fit/resize ===== */
 function fitLayout(){
+  // максимально вмещаем поле и оставляем запас
   const vw = window.innerWidth;
-  const vh = Math.min(
-    window.visualViewport?.height || Number.POSITIVE_INFINITY,
-    document.documentElement.clientHeight || Number.POSITIVE_INFINITY,
-    window.innerHeight
-  );
+  const vh = Math.min(window.visualViewport?.height || window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
 
-  let ctrlSize = 104;
-  const minCtrl = 62;
-  const gap = 12;
-  const EXTRA_BOTTOM = 64; // ↑ увеличил, чтобы кнопка "вниз" не уезжала
+  const headerH = document.querySelector('header')?.getBoundingClientRect().height || 0;
+  const EXTRA_BOTTOM = 18;
 
-  for (;;){
-    document.documentElement.style.setProperty('--ctrl-size', ctrlSize + 'px');
-    document.documentElement.style.setProperty('--ctrl-gap',  gap + 'px');
+  const maxW = Math.min(vw - 32, 960);
+  const sizeByW = Math.floor(maxW / COLS);
+  const freeH = vh - headerH - EXTRA_BOTTOM;
+  const sizeByH = Math.floor(freeH / ROWS);
 
-    const headerH = headerEl.getBoundingClientRect().height;
-    const ctrlH   = ctrlSize*3 + gap*2;
-    const freeH   = vh - headerH - ctrlH - EXTRA_BOTTOM;
-
-    const maxW    = Math.min(vw - 40, 960);
-    const sizeByW = Math.floor(maxW / COLS);
-    const sizeByH = Math.floor(freeH / ROWS);
-
-    const candidate = Math.min(sizeByW, sizeByH);
-    const MIN_TILE = 12; // можно сильнее ужаться, чтобы крестовина помещалась
-
-    if (candidate >= MIN_TILE) { tileSize = candidate; break; }
-    if (ctrlSize > minCtrl) { ctrlSize -= 4; continue; }
-    tileSize = Math.max(MIN_TILE, candidate);
-    break;
-  }
+  // не опускаем слишком маленькие размеры
+  tileSize = Math.max(12, Math.min(sizeByW, sizeByH));
 }
 
 function resizeCanvas(){
@@ -276,158 +179,358 @@ function resizeCanvas(){
   const cssH = tileSize * ROWS;
   canvasW = cssW; canvasH = cssH;
 
-  canvas.style.width  = cssW + 'px';
+  canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
-  container.style.width  = cssW + 'px';
+  container.style.width = cssW + 'px';
   container.style.height = cssH + 'px';
 
-  const device = window.devicePixelRatio || 1;
-  DPR = Math.min(3, device * RENDER_SCALE);
-  canvas.width  = Math.round(cssW * DPR);
-  canvas.height = Math.round(cssH * DPR);
+  const device = Math.max(1, window.devicePixelRatio || 1);
+  DPR = Math.min(2, device * RENDER_SCALE); // clamp DPR <= 2 для мобильной оптимизации
 
+  canvas.width = Math.round(cssW * DPR);
+  canvas.height = Math.round(cssH * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.imageSmoothingEnabled = true;
 }
-addEventListener('resize', resizeCanvas);
-addEventListener('orientationchange', resizeCanvas);
+window.addEventListener('resize', ()=>{ resizeCanvas(); drawStatic(); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ resizeCanvas(); drawStatic(); }, 120) });
 resizeCanvas();
 
-/* ====== Картинки еды ====== */
-function mkImg(src){ const img=new Image(); img.decoding='async'; img.loading='eager'; img.src=src; return img; }
-const categoryConfig={ balzam:{prefix:'balzam',count:8,points:50,w:1,h:1,weight:1},
-                       cream:{prefix:'Cream',count:3,points:100,w:1,h:2,weight:1},
-                       shampoo:{prefix:'Shampoo',count:3,points:150,w:1,h:2,weight:1},
-                       tip:{prefix:'tip',count:2,points:200,w:1,h:2,weight:0.35} };
-const hairsprayConfig={ prefix:'HairSpray', count:3, points:300, w:1, h:2 };
+/* ================== Assets ================== */
+function mkImg(src){ const i = new Image(); i.decoding='async'; i.loading='eager'; i.src=src; return i; }
+const categoryConfig = {
+  balzam: { prefix: 'balzam', count: 8, points: 50, w:1, h:1, weight:1 },
+  cream:  { prefix: 'Cream',  count: 3, points:100, w:1, h:2, weight:1 },
+  shampoo:{ prefix: 'Shampoo',count: 3, points:150, w:1, h:2, weight:1 },
+  tip:    { prefix: 'tip',    count: 2, points:200, w:1, h:2, weight:0.35 }
+};
+const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
 
-const imagesByCategory={};
+const imagesByCategory = {};
 for (const k in categoryConfig){
-  imagesByCategory[k]=[];
-  const cfg=categoryConfig[k];
-  for(let i=1;i<=cfg.count;i++) imagesByCategory[k].push(mkImg(`assets/${cfg.prefix}${i}.png`));
+  imagesByCategory[k] = [];
+  const cfg = categoryConfig[k];
+  for (let i=1; i<=cfg.count; i++) imagesByCategory[k].push(mkImg(`assets/${cfg.prefix}${i}.png`));
 }
-const hairsprayImages=[]; for(let i=1;i<=hairsprayConfig.count;i++) hairsprayImages.push(mkImg(`assets/${hairsprayConfig.prefix}${i}.png`));
+const hairsprayImages = [];
+for (let i=1;i<=hairsprayConfig.count;i++) hairsprayImages.push(mkImg(`assets/${hairsprayConfig.prefix}${i}.png`));
 
-const headImg=mkImg('golova.png'); const telo1=mkImg('telo1.png'); const telo2=mkImg('telo2.png');
+const headImg = mkImg('golova.png');
+const telo1 = mkImg('telo1.png');
+const telo2 = mkImg('telo2.png');
+const flowerImg = mkImg('flower.png');
 
-/* ====== Состояние ====== */
-let snake=[], dx=1, dy=0, food=null, extraFood=null, particles=[], gameOver=false, timerId=null, eatenSinceSpeedup=0, totalEaten=0, scoreVar=0, globalTime=0, pendingHairspray=false;
-const FOOD_SCALE=2.42, MAX_OVERFLOW_PCT=0.65, MAX_OVERFLOW_TILES=0.9, HEARTS_BASE=12, HEARTS_COUNT=Math.max(1,Math.round(HEARTS_BASE*0.6)), SPEED_MULT_BASE=0.975, EXTRA_STEP_PCT=0.003, SPEED_MULT_COMBINED=SPEED_MULT_BASE-EXTRA_STEP_PCT, MIN_STEP=25, SMOOTH_LERP=0.14;
+/* ================== State ================== */
+let snake = [], dx = 1, dy = 0;
+let food = null, extraFood = null, particles = [];
+let gameOver = false, timerId = null;
+let eatenSinceSpeedup = 0, totalEaten = 0, scoreVar = 0, globalTime = 0;
+let pendingHairspray = false;
+let gameStarted = false;
 
-/* ====== Утилиты ====== */
+/* ================== Utils ================== */
 function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-function pointOnSnake(x,y){ return snake.some(s=>s.x===x && s.y===y); }
-function rectFree(x,y,w,h){ if(x<0||y<0||x+w>COLS||y+h>ROWS) return false; for(let sx=x;sx<x+w;sx++) for(let sy=y;sy<y+h;sy++) if(pointOnSnake(sx,sy)) return false; return true; }
-function lerp(a,b,t){ return a + (b-a)*t; }
-function chooseCategory(){ const pool=[]; for (const k of Object.keys(categoryConfig)){ const times=Math.max(1,Math.round(categoryConfig[k].weight*10)); for(let i=0;i<times;i++) pool.push(k);} return pool[randInt(0,pool.length-1)]; }
+function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
+function rectFree(x,y,w,h){
+  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
+  for (let sx=x; sx<x+w; sx++) for (let sy=y; sy<y+h; sy++) if(pointOnSnake(sx,sy)) return false;
+  return true;
+}
+function lerp(a,b,t){ return a + (b-a) * t; }
+function chooseCategory(){
+  const keys = Object.keys(categoryConfig);
+  const pool = [];
+  for (const k of keys){
+    const w = categoryConfig[k].weight;
+    const times = Math.max(1, Math.round(w * 10));
+    for (let i=0;i<times;i++) pool.push(k);
+  }
+  return pool[randInt(0,pool.length-1)];
+}
 
-/* ====== Еда ====== */
+/* ================== Food placement ================== */
 function placeFood(){
-  const maxAttempts=1000; let attempts=0; food=null;
-  while(attempts++<maxAttempts){
-    const cat=chooseCategory(), cfg=categoryConfig[cat]; const w=cfg.w,h=cfg.h,x=randInt(0,COLS-w),y=randInt(0,ROWS-h);
-    if(!rectFree(x,y,w,h)) continue; const imgs=imagesByCategory[cat]; const img=imgs.length?imgs[randInt(0,imgs.length-1)]:null; food={x,y,cat,img,points:cfg.points,w,h}; break;
+  const maxAttempts = 1000;
+  let attempts = 0;
+  food = null;
+  while(attempts++ < maxAttempts){
+    const cat = chooseCategory();
+    const cfg = categoryConfig[cat];
+    const w = cfg.w, h = cfg.h;
+    const x = randInt(0, COLS - w);
+    const y = randInt(0, ROWS - h);
+    if (!rectFree(x,y,w,h)) continue;
+    const imgs = imagesByCategory[cat];
+    const img = imgs.length ? imgs[randInt(0, imgs.length-1)] : null;
+    food = { x, y, cat, img, points: cfg.points, w, h };
+    break;
   }
-  if(!food){
-    outer: for(let yy=0;yy<ROWS;yy++) for(let xx=0;xx<COLS;xx++){
-      if(!pointOnSnake(xx,yy)){ const imgs=imagesByCategory['balzam']; food={x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1}; break outer; }
+  if (!food){
+    outer: for (let yy=0; yy<ROWS; yy++){
+      for (let xx=0; xx<COLS; xx++){
+        if (!pointOnSnake(xx,yy)){
+          const imgs = imagesByCategory['balzam'];
+          food = { x:xx, y:yy, cat:'balzam', img: imgs[0]||null, points:50, w:1, h:1 };
+          break outer;
+        }
+      }
     }
   }
-  if(pendingHairspray){
-    const wH=hairsprayConfig.w, hH=hairsprayConfig.h; let placed=false, attempts2=0;
-    while(attempts2++<800 && !placed){
-      const x=randInt(0,COLS-wH), y=randInt(0,ROWS-hH); if(!rectFree(x,y,wH,hH)) continue;
-      if(!(x+wH<=food.x||x>=food.x+food.w||y+hH<=food.y||y>=food.y+food.h)) continue;
-      const img=hairsprayImages.length?hairsprayImages[randInt(0,hairsprayImages.length-1)]:null;
-      extraFood={x,y,cat:'hairspray',img,points:hairsprayConfig.points,w:wH,h:hH,expiresAt:performance.now()+3000}; placed=true;
+
+  if (pendingHairspray){
+    const wH = hairsprayConfig.w, hH = hairsprayConfig.h;
+    let placed = false, attempts2 = 0;
+    while(attempts2++ < 800 && !placed){
+      const x = randInt(0, COLS - wH);
+      const y = randInt(0, ROWS - hH);
+      if (!rectFree(x,y,wH,hH)) continue;
+      if (!(x + wH <= food.x || x >= food.x + food.w || y + hH <= food.y || y >= food.y + food.h)) continue;
+      const img = hairsprayImages.length ? hairsprayImages[randInt(0, hairsprayImages.length-1)] : null;
+      extraFood = { x, y, cat:'hairspray', img, points: hairsprayConfig.points, w: wH, h: hH, expiresAt: performance.now() + 3000 };
+      placed = true;
     }
-    pendingHairspray=false;
+    pendingHairspray = false;
   }
 }
 
-/* ====== Сегменты / Инициализация ====== */
-function createSegment(x,y){ return { x, y, px:x*tileSize+tileSize/2, py:y*tileSize+tileSize/2 }; }
+/* ================== Smooth segments ================== */
+function createSegment(x,y){ return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 }; }
 
+/* ================== Init / restart ================== */
 function initGame(){
-  const cx=Math.floor(COLS/2), cy=Math.floor(ROWS/2);
-  snake=[createSegment(cx,cy),createSegment(cx-1,cy),createSegment(cx-2,cy)];
-  dx=1; dy=0; stepDelay=Math.round(BASE_STEP_MS*1.20);
-  food=null; extraFood=null; pendingHairspray=false; particles=[]; gameOver=false;
-  eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
+  const cx = Math.floor(COLS/2);
+  const cy = Math.floor(ROWS/2);
+  snake = [ createSegment(cx,cy), createSegment(cx-1,cy), createSegment(cx-2,cy) ];
+  dx = 1; dy = 0;
+  stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
+  food = null; extraFood = null; pendingHairspray = false;
+  particles = [];
+  gameOver = false;
+  eatenSinceSpeedup = 0;
+  totalEaten = 0;
+  scoreVar = 0;
   placeFood();
-
-  btnRestart.style.display='none';
-  btnShare.style.display='none';
-
-  if (timerId) clearTimeout(timerId);
-  scheduleNextStep();
+  if (timerId) { clearTimeout(timerId); timerId = null; }
+  // запускаем рендер, но шаги стартуют только после tap
   requestAnimationFrame(renderLoop);
 }
 
-/* ====== Рендер ====== */
-function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1){
+/* ================== Step logic ================== */
+function willCollide(nx, ny){
+  if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
+  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
+  return false;
+}
+
+async function onGameOver(){
+  gameOver = true;
+  // отправка результата (fire-and-forget)
+  try{ await sendScoreToSheets({ username: getTgUsername()||'Игрок', score: scoreVar, tg_id: getTgId()||'' }); }catch(e){ console.warn('send err', e); }
+
+  // показываем overlay с перезапуском
+  startMsg.textContent = `Игра окончена — счёт: ${scoreVar}\nТапни, чтобы сыграть снова`;
+  startOverlay.style.display = 'flex';
+  startOverlay.setAttribute('aria-hidden','false');
+  gameStarted = false;
+  if (timerId) { clearTimeout(timerId); timerId = null; }
+}
+
+function performStep(){
+  if (gameOver || !gameStarted) return;
+  const headGX = snake[0].x + dx;
+  const headGY = snake[0].y + dy;
+
+  if (willCollide(headGX, headGY)){
+    onGameOver();
+    return;
+  }
+
+  snake.unshift( createSegment(headGX, headGY) );
+
+  // extraFood (hairspray)
+  let ateExtra = false;
+  if (extraFood){
+    if (headGX >= extraFood.x && headGX < extraFood.x + extraFood.w &&
+        headGY >= extraFood.y && headGY < extraFood.y + extraFood.h){
+      scoreVar += extraFood.points;
+      totalEaten++;
+      eatenSinceSpeedup++;
+      spawnParticlesAt(extraFood.x, extraFood.y, extraFood.w, extraFood.h, 'hairspray');
+      extraFood = null;
+      ateExtra = true;
+    }
+  }
+
+  // main food
+  let ateMain = false;
+  if (food && !ateExtra){
+    if (headGX >= food.x && headGX < food.x + food.w &&
+        headGY >= food.y && headGY < food.y + food.h){
+      ateMain = true;
+      totalEaten++;
+      eatenSinceSpeedup++;
+      scoreVar += food.points;
+      spawnParticlesAt(food.x, food.y, food.w, food.h, food.cat);
+      pendingHairspray = (Math.random() < 0.10);
+      placeFood();
+    }
+  }
+
+  if (!ateMain && !ateExtra) snake.pop();
+
+  if (eatenSinceSpeedup >= 3){
+    stepDelay = Math.max(MIN_STEP, Math.round(stepDelay * SPEED_MULT_COMBINED));
+    eatenSinceSpeedup = 0;
+  }
+
+  if (extraFood && performance.now() > extraFood.expiresAt){
+    extraFood = null;
+  }
+
+  scheduleNextStep();
+}
+
+function scheduleNextStep(){
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(performStep, stepDelay);
+}
+
+/* ================== Particles (медленнее + дольше) ================== */
+function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
+  const cx = (cellX + cellsW/2) * tileSize;
+  const cy = (cellY + cellsH/2) * tileSize;
+  const char = (cat === 'hairspray') ? '⭐️' : '❤️';
+
+  const SLOW_MULT = PARTICLE_SPEED_FACTOR;
+  const LIFE_BASE = PARTICLE_LIFE_BASE;
+  const LIFE_RAND = PARTICLE_LIFE_RAND;
+  const LIFE_FACTOR = PARTICLE_LIFE_FACTOR;
+
+  // ограничиваем количество частиц для производительности
+  const count = Math.max(3, Math.min(8, Math.floor(HEARTS_COUNT * 0.9)));
+
+  for (let i=0;i<count;i++){
+    const angle = Math.random() * Math.PI * 2;
+    const baseSpeed = 0.5 + Math.random() * 1.2;
+    const vyBias = (cat === 'hairspray') ? -0.35 - Math.random()*0.15 : (Math.random()*0.3 - 0.15);
+    const life = Math.round((LIFE_BASE + Math.floor(Math.random()*LIFE_RAND)) * LIFE_FACTOR);
+    const size = tileSize * (0.45 + Math.random() * 0.6);
+    const vx = Math.cos(angle) * baseSpeed * (0.5 + Math.random()*0.7) * SLOW_MULT;
+    const vy = (Math.sin(angle) * baseSpeed * (0.5 + Math.random()*0.7) + vyBias) * SLOW_MULT;
+    particles.push({
+      type:'emoji',
+      char,
+      x: cx + (Math.random()-0.5) * tileSize * 0.2,
+      y: cy + (Math.random()-0.5) * tileSize * 0.2,
+      vx,
+      vy,
+      size,
+      life,
+      maxLife: life
+    });
+  }
+}
+
+function updateParticles(){
+  // обновляем с оптимизацией: удаляем вне канвы
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.994;
+    p.vy += 0.006;
+    p.life--;
+    // удаляем, если за пределами расширенной зоны или жизнь кончилась
+    if (p.life <= 0 || p.x < -50 || p.x > canvasW + 50 || p.y < -50 || p.y > canvasH + 50) particles.splice(i,1);
+  }
+}
+
+/* ================== Drawing helpers ================== */
+function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
   ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
   ctx.globalAlpha = alpha;
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI*2);
   ctx.fillStyle = fillStyle;
   ctx.fill();
   ctx.restore();
 }
-function computeImageDrawRect(areaLeft,areaTop,areaW,areaH){
-  const desiredW=Math.round(areaW*FOOD_SCALE), desiredH=Math.round(areaH*FOOD_SCALE);
-  const allowedOverflowW=Math.min(Math.round(areaW*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const allowedOverflowH=Math.min(Math.round(areaH*MAX_OVERFLOW_PCT),Math.round(tileSize*MAX_OVERFLOW_TILES));
-  const maxAllowedW=areaW+allowedOverflowW, maxAllowedH=areaH+allowedOverflowH;
-  let drawW=Math.min(desiredW,maxAllowedW), drawH=Math.min(desiredH,maxAllowedH);
-  return {drawW,drawH,areaLeft,areaTop,areaW,areaH,maxAllowedW,maxAllowedH};
+
+function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
+  const desiredW = Math.round(areaW * FOOD_SCALE);
+  const desiredH = Math.round(areaH * FOOD_SCALE);
+  const allowedOverflowW = Math.min(Math.round(areaW * MAX_OVERFLOW_PCT), Math.round(tileSize * MAX_OVERFLOW_TILES));
+  const allowedOverflowH = Math.min(Math.round(areaH * MAX_OVERFLOW_PCT), Math.round(tileSize * MAX_OVERFLOW_TILES));
+  const maxAllowedW = areaW + allowedOverflowW;
+  const maxAllowedH = areaH + allowedOverflowH;
+  let drawW = Math.min(desiredW, maxAllowedW);
+  let drawH = Math.min(desiredH, maxAllowedH);
+  return { drawW, drawH, areaLeft, areaTop, areaW, areaH, maxAllowedW, maxAllowedH };
 }
 
-/* — фоновые цветы рисуем ПЕРВЫМИ — */
-function drawFlowersLayer(){ drawFlowers(); }
-
+/* ================== Draw food (с вертикальным oval для hairspray) ================== */
 function drawSingleFood(it, nowSec){
   if (!it) return;
-  const cellsW=it.w, cellsH=it.h, areaW=tileSize*cellsW, areaH=tileSize*cellsH, areaLeft=it.x*tileSize, areaTop=it.y*tileSize;
+  const cellsW = it.w, cellsH = it.h;
+  const areaW = tileSize * cellsW;
+  const areaH = tileSize * cellsH;
+  const areaLeft = it.x * tileSize;
+  const areaTop  = it.y * tileSize;
 
-  // ГОРИЗОНТАЛЬНАЯ подсветка бонуса (rx > ry)
-  if (it.cat==='hairspray'){
-    const pulse=1+0.22*Math.sin(nowSec*4.2+it.x*1.7+it.y*0.9);
-    const cx=Math.round(areaLeft+areaW/2), cy=Math.round(areaTop+areaH/2);
-    const base=Math.min(areaW,areaH);
-    const rx=Math.max(12, Math.round((base*0.55) * pulse));
-    const ry=Math.max(6,  Math.round((base*0.25)));
+  if (it.cat === 'hairspray'){
+    // vertical pulse (ry > rx), чуть больше
+    const pulse = 1 + 0.26 * Math.sin(nowSec * 4 + it.x * 1.7 + it.y * 0.9);
+    const cx = Math.round(areaLeft + areaW/2);
+    const cy = Math.round(areaTop + areaH/2);
+    const base = Math.min(areaW, areaH);
+    const ry = Math.max(14, Math.round((base/1.8 + 18) * pulse)); // высота (больше)
+    const rx = Math.max(8, Math.round((base/3.2 + 8) * pulse));   // ширина (меньше) => вертикальная ориентация
     drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98);
   }
 
   if (it.img && it.img.complete && it.img.naturalWidth && it.img.naturalHeight){
-    const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH);
-    const iw=it.img.naturalWidth, ih=it.img.naturalHeight, aspect=iw/ih;
-    let drawW=c.drawW, drawH=Math.round(drawW/aspect);
-    if(drawH>c.maxAllowedH){ drawH=c.maxAllowedH; drawW=Math.round(drawH*aspect); }
-    const drawX=Math.round(areaLeft+(areaW-drawW)/2), drawY=Math.round(areaTop+(areaH-drawH)/2);
+    const c = computeImageDrawRect(areaLeft, areaTop, areaW, areaH);
+    const iw = it.img.naturalWidth, ih = it.img.naturalHeight;
+    const aspect = iw / ih;
+    let drawW = c.drawW;
+    let drawH = Math.round(drawW / aspect);
+    if (drawH > c.maxAllowedH){
+      drawH = c.maxAllowedH;
+      drawW = Math.round(drawH * aspect);
+    }
+    const drawX = Math.round(areaLeft + (areaW - drawW)/2);
+    const drawY = Math.round(areaTop + (areaH - drawH)/2);
     ctx.drawImage(it.img, drawX, drawY, drawW, drawH);
   } else {
-    const c=computeImageDrawRect(areaLeft,areaTop,areaW,areaH);
-    const dw=Math.round(Math.min(c.drawW,c.maxAllowedW*0.95)), dh=Math.round(dw/1.2);
-    const dx=Math.round(areaLeft+(areaW-dw)/2), dy=Math.round(areaTop+(areaH-dh)/2);
-    ctx.fillStyle='#ff6b6b'; ctx.fillRect(dx,dy,dw,dh);
+    const c = computeImageDrawRect(areaLeft, areaTop, areaW, areaH);
+    const dw = Math.round(Math.min(c.drawW, c.maxAllowedW * 0.95));
+    const dh = Math.round(dw / 1.2);
+    const dx = Math.round(areaLeft + (areaW - dw)/2);
+    const dy = Math.round(areaTop + (areaH - dh)/2);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.fillRect(dx, dy, dw, dh);
   }
 }
-function drawFood(nowSec){ drawSingleFood(food,nowSec); if(extraFood) drawSingleFood(extraFood,nowSec); }
+function drawFood(nowSec){
+  drawSingleFood(food, nowSec);
+  if (extraFood) drawSingleFood(extraFood, nowSec);
+}
 
-/* === Змейка с поворотом сегментов === */
+/* ================== Draw snake with rotated telo1 segments ================== */
 function drawSnake(){
   for (let i=0;i<snake.length;i++){
-    const s=snake[i], tx=s.x*tileSize+tileSize/2, ty=s.y*tileSize+tileSize/2;
-    s.px=lerp(s.px,tx,SMOOTH_LERP); s.py=lerp(s.py,ty,SMOOTH_LERP);
+    const s = snake[i];
+    const targetCx = s.x * tileSize + tileSize/2;
+    const targetCy = s.y * tileSize + tileSize/2;
+    s.px = lerp(s.px, targetCx, SMOOTH_LERP);
+    s.py = lerp(s.py, targetCy, SMOOTH_LERP);
   }
 
   for (let i=1; i<snake.length; i++){
     const s = snake[i];
     const size = Math.max(6, Math.floor(tileSize * 1.06));
-
     if (i === snake.length - 1){
       if (telo2 && telo2.complete && telo2.naturalWidth){
         const tail = snake[snake.length - 1];
@@ -436,269 +539,257 @@ function drawSnake(){
         ctx.save();
         ctx.translate(tail.px, tail.py);
         ctx.rotate(angle + Math.PI/2);
-        let iw=telo2.naturalWidth, ih=telo2.naturalHeight, aspect=iw/ih;
-        let dw=size, dh=size;
-        if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
+        let iw = telo2.naturalWidth, ih = telo2.naturalHeight;
+        let aspect = iw / ih;
+        let dw = size, dh = size;
+        if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
         ctx.drawImage(telo2, -dw/2, -dh/2, dw, dh);
         ctx.restore();
       } else {
-        ctx.fillStyle='#E159A9';
-        ctx.beginPath(); ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2-2)), 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#E159A9';
+        ctx.beginPath();
+        ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
+        ctx.fill();
       }
-      continue;
-    }
-
-    if (telo1 && telo1.complete && telo1.naturalWidth){
-      const prev = snake[i-1];
-      const next = snake[i+1] || snake[i];
-      const angle = Math.atan2(next.py - prev.py, next.px - prev.px);
-
-      ctx.save();
-      ctx.translate(s.px, s.py);
-      ctx.rotate(angle + Math.PI/2);
-
-      let iw=telo1.naturalWidth, ih=telo1.naturalHeight, aspect=iw/ih;
-      let dw=size, dh=size;
-      if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
-
-      ctx.drawImage(telo1, -dw/2, -dh/2, dw, dh);
-      ctx.restore();
     } else {
-      ctx.fillStyle='#E159A9';
-      ctx.beginPath(); ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2-2)), 0, Math.PI*2); ctx.fill();
+      if (telo1 && telo1.complete && telo1.naturalWidth){
+        const prev = snake[i-1];
+        const next = snake[i+1] || snake[i];
+        const angle = Math.atan2(next.py - prev.py, next.px - prev.px);
+        ctx.save();
+        ctx.translate(s.px, s.py);
+        ctx.rotate(angle + Math.PI/2);
+        let iw = telo1.naturalWidth, ih = telo1.naturalHeight;
+        let aspect = iw / ih;
+        let dw = size, dh = size;
+        if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
+        ctx.drawImage(telo1, -dw/2, -dh/2, dw, dh);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#E159A9';
+        ctx.beginPath();
+        ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
+        ctx.fill();
+      }
     }
   }
 
   const head = snake[0];
   const hx = head.px, hy = head.py;
   const headScale = 1.42;
-  const headSize = Math.max(6, Math.floor(tileSize * headScale));
+  const headSizeBase = Math.max(6, Math.floor(tileSize * headScale));
   if (headImg && headImg.complete && headImg.naturalWidth){
     const dirAngle = Math.atan2(dy, dx);
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(dirAngle + Math.PI/2);
-    let iw=headImg.naturalWidth, ih=headImg.naturalHeight, aspect=iw/ih;
-    let dw=headSize, dh=headSize;
-    if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
+    let iw = headImg.naturalWidth, ih = headImg.naturalHeight;
+    let aspect = iw / ih;
+    let dw = headSizeBase, dh = headSizeBase;
+    if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
     ctx.drawImage(headImg, -dw/2, -dh/2, dw, dh);
     ctx.restore();
   } else {
-    ctx.fillStyle='#E159A9';
-    ctx.beginPath(); ctx.arc(hx, hy, Math.max(4, Math.floor(tileSize/2-2)), 0, Math.PI*2); ctx.fill();
-    const eyeR=Math.max(2,Math.floor(tileSize/6)), ex=tileSize/4, ey=tileSize/6;
-    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(hx-ex,hy-ey,eyeR,0,Math.PI*2); ctx.arc(hx+ex,hy-ey,eyeR,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(hx-ex,hy-ey,Math.max(1,Math.floor(eyeR/2)),0,Math.PI*2); ctx.arc(hx+ex,hy-ey,Math.max(1,Math.floor(eyeR/2)),0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#E159A9';
+    ctx.beginPath();
+    ctx.arc(hx, hy, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
+    ctx.fill();
+    const eyeR = Math.max(2, Math.floor(tileSize/6));
+    const eyeOffsetX = tileSize / 4;
+    const eyeOffsetY = tileSize / 6;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2);
+    ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2);
+    ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2);
+    ctx.fill();
   }
 }
 
+/* ================== Particles draw & score ================== */
 function drawParticles(){
-  if(!particles.length) return; ctx.save();
-  for (let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    if (p.type==='emoji'){
-      ctx.globalAlpha=Math.max(0,p.life/p.maxLife);
-      ctx.font=`${Math.max(8,Math.floor(p.size))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", serif`;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
+  if (!particles.length) return;
+  ctx.save();
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    if (p.type === 'emoji'){
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.font = `${Math.max(8, Math.floor(p.size))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji", serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(p.char, Math.round(p.x), Math.round(p.y));
-      ctx.globalAlpha=1;
+      ctx.globalAlpha = 1;
     } else {
-      ctx.globalAlpha=Math.max(0,p.life/p.maxLife);
-      ctx.fillStyle=p.color||'#fff';
-      ctx.beginPath(); ctx.arc(Math.round(p.x),Math.round(p.y),p.r,0,Math.PI*2); ctx.fill();
-      ctx.globalAlpha=1;
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color || '#fff';
+      ctx.beginPath(); ctx.arc(Math.round(p.x), Math.round(p.y), p.r, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
   ctx.restore();
 }
+
 function drawScore(){
   ctx.save();
-  ctx.fillStyle='#000';
-  ctx.font=`${Math.max(14,Math.floor(tileSize*0.7))}px Futura, Arial, sans-serif`;
-  ctx.textBaseline='top';
-  ctx.fillText('Счёт: '+scoreVar, Math.max(6,tileSize*0.15), Math.max(6,tileSize*0.12));
+  ctx.fillStyle = '#000';
+  ctx.font = `${Math.max(14, Math.floor(tileSize * 0.7))}px Futura, Arial, sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillText('Счёт: ' + scoreVar, Math.max(6, tileSize*0.15), Math.max(6, tileSize*0.12));
   ctx.restore();
 }
+
+/* ================== Render loop ================== */
 function renderLoop(ts){
-  globalTime=ts/1000; if(extraFood && performance.now()>extraFood.expiresAt) extraFood=null;
+  globalTime = ts / 1000;
+  if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
+
   ctx.clearRect(0,0,canvasW,canvasH);
 
-  // Порядок слоёв: фон-цветы -> еда -> змейка -> частицы -> счёт
-  drawFlowersLayer();
+  // порядок: фон-цветы (оставляем, если есть), еда, змейка, частицы, счёт
+  drawFlowers();
   drawFood(globalTime);
   drawSnake();
   drawParticles();
   drawScore();
 
   updateParticles();
+
   requestAnimationFrame(renderLoop);
 }
 
-/* ====== Частицы (медленнее) ====== */
-function spawnParticlesAt(cellX,cellY,cellsW,cellsH,cat){
-  const cx=(cellX+cellsW/2)*tileSize, cy=(cellY+cellsH/2)*tileSize, char=(cat==='hairspray')?'⭐️':'❤️';
-
-  // ещё медленнее и живут дольше
-  const SPEED_SLOW = 0.40;      // было 0.48
-  const LIFE_BASE = 44, LIFE_RAND = 44, LIFE_FACTOR = 1.35;
-
-  for(let i=0;i<Math.max(3,HEARTS_COUNT);i++){
-    const angle=Math.random()*Math.PI*2, baseSpeed=0.6+Math.random()*1.6;
-    const vyBias=(cat==='hairspray')?-0.4-Math.random()*0.2:(Math.random()*0.4-0.2);
-    const life=Math.round((LIFE_BASE + Math.floor(Math.random()*LIFE_RAND)) * LIFE_FACTOR);
-    const size=tileSize*(0.45+Math.random()*0.8);
-    const vx=Math.cos(angle)*baseSpeed*(0.6+Math.random()*0.9)*SPEED_SLOW;
-    const vy=(Math.sin(angle)*baseSpeed*(0.6+Math.random()*0.9)+vyBias)*SPEED_SLOW;
-    particles.push({type:'emoji',char,x:cx+(Math.random()-0.5)*tileSize*0.2,y:cy+(Math.random()-0.5)*tileSize*0.2,vx,vy,size,life,maxLife:life});
+/* ================== Flowers background (same as before) ================== */
+const flowerSeed = 1337;
+let flowers = [];
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967295;}}
+function generateFlowers(){
+  flowers.length = 0;
+  const rng = mulberry32(flowerSeed);
+  const target = Math.round(COLS * ROWS * 0.25);
+  for (let i=0;i<target;i++){
+    const ux = rng(), uy = rng();
+    const rot = (rng() - 0.5) * 0.9;
+    const scale = 0.8 + rng()*0.6;
+    flowers.push({ux,uy,rot,scale});
   }
 }
-function updateParticles(){
-  for (let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vx *= 0.994;     // больше "вязкости"
-    p.vy += 0.006;     // меньше гравитации
-    p.life--;
-    if (p.life <= 0) particles.splice(i,1);
+generateFlowers();
+
+function drawFlowers(){
+  if (!flowerImg.complete || !flowerImg.naturalWidth) return;
+  const base = Math.max(8, Math.floor(tileSize * 0.42));
+  for (const f of flowers){
+    const x = Math.round(f.ux * canvasW);
+    const y = Math.round(f.uy * canvasH);
+    const size = Math.round(base * f.scale);
+    const w = size, h = size;
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(f.rot);
+    ctx.globalAlpha = 0.84;
+    ctx.drawImage(flowerImg, -w/2, -h/2, w, h);
+    ctx.restore();
   }
 }
 
-/* ====== Игровая логика ====== */
-function willCollide(nx,ny){ if(nx<0||ny<0||nx>=COLS||ny>=ROWS) return true; for(let i=1;i<snake.length;i++) if(snake[i].x===nx && snake[i].y===ny) return true; return false; }
-function performStep(){
-  if (gameOver) return;
-  const headGX=snake[0].x+dx, headGY=snake[0].y+dy;
-  if (willCollide(headGX,headGY)){ gameOver=true; onGameOver(); return; }
-  snake.unshift(createSegment(headGX, headGY));
+/* ================== Input: keyboard + touch + start by tap ================== */
+function setDir(nx, ny){ if (nx === -dx && ny === -dy) return; dx = nx; dy = ny; }
 
-  let ateExtra=false;
-  if (extraFood){
-    if (headGX>=extraFood.x && headGX<extraFood.x+extraFood.w && headGY>=extraFood.y && headGY<extraFood.y+extraFood.h){
-      scoreVar+=extraFood.points; totalEaten++; eatenSinceSpeedup++;
-      spawnParticlesAt(extraFood.x,extraFood.y,extraFood.w,extraFood.h,'hairspray'); extraFood=null; ateExtra=true;
-    }
-  }
-  let ateMain=false;
-  if (food && !ateExtra){
-    if (headGX>=food.x && headGX<food.x+food.w && headGY>=food.y && headGY<food.y+food.h){
-      ateMain=true; totalEaten++; eatenSinceSpeedup++; scoreVar+=food.points;
-      spawnParticlesAt(food.x,food.y,food.w,food.h,food.cat);
-      pendingHairspray=(Math.random()<0.10); placeFood();
-    }
-  }
-  if (!ateMain && !ateExtra) snake.pop();
-  if (eatenSinceSpeedup>=3){ stepDelay=Math.max(MIN_STEP, Math.round(stepDelay*SPEED_MULT_COMBINED)); eatenSinceSpeedup=0; }
-  if (extraFood && performance.now()>extraFood.expiresAt) extraFood=null;
-  scheduleNextStep();
-}
-function scheduleNextStep(){ if (timerId) clearTimeout(timerId); timerId=setTimeout(performStep, stepDelay); }
-
-/* ====== Управление: клавиши ====== */
-function setDir(nx,ny){ if (nx===-dx && ny===-dy) return; dx=nx; dy=ny; }
-addEventListener('keydown', e=>{
-  if (e.key==='ArrowUp') setDir(0,-1);
-  else if (e.key==='ArrowDown') setDir(0,1);
-  else if (e.key==='ArrowLeft') setDir(-1,0);
-  else if (e.key==='ArrowRight') setDir(1,0);
+window.addEventListener('keydown', e=>{
+  if (e.key === 'ArrowUp') setDir(0,-1);
+  else if (e.key === 'ArrowDown') setDir(0,1);
+  else if (e.key === 'ArrowLeft') setDir(-1,0);
+  else if (e.key === 'ArrowRight') setDir(1,0);
 });
 
-/* ====== Управление: кнопки ====== */
-document.getElementById('btnUp').addEventListener('click', ()=> setDir(0,-1));
-document.getElementById('btnDown').addEventListener('click', ()=> setDir(0,1));
-document.getElementById('btnLeft').addEventListener('click', ()=> setDir(-1,0));
-document.getElementById('btnRight').addEventListener('click', ()=> setDir(1,0));
-document.getElementById('btnUp').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(0,-1); }, {passive:false});
-document.getElementById('btnDown').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(0,1); }, {passive:false});
-document.getElementById('btnLeft').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(-1,0); }, {passive:false});
-document.getElementById('btnRight').addEventListener('touchstart', e=>{ e.preventDefault(); setDir(1,0); }, {passive:false});
+let tsx=0, tsy=0, swiping=false;
+canvas.addEventListener('touchstart', e=>{ 
+  const t = e.touches[0];
+  tsx = t.clientX; tsy = t.clientY; swiping = true;
+  // single tap to start if not started
+  if (!gameStarted && !gameOver){
+    startGame();
+  }
+}, {passive:true});
 
-/* ====== Свайпы: только на канвасе ====== */
-let touchStartX=0, touchStartY=0, swiping=false;
-const SWIPE_THRESH = 22;
-function onCanvasTouchStart(e){ const t=e.touches[0]; touchStartX=t.clientX; touchStartY=t.clientY; swiping=true; e.preventDefault(); }
-function onCanvasTouchMove(e){
+canvas.addEventListener('touchmove', e=>{
   if (!swiping) return;
-  const t=e.touches[0], dx=t.clientX-touchStartX, dy=t.clientY-touchStartY;
-  if (Math.abs(dx) < SWIPE_THRESH && Math.abs(dy) < SWIPE_THRESH) return;
-  if (Math.abs(dx) > Math.abs(dy)) setDir(dx>0?1:-1,0); else setDir(0,dy>0?1:-1);
-  swiping=false; e.preventDefault();
-}
-function onCanvasTouchEnd(e){ swiping=false; e.preventDefault(); }
-canvas.addEventListener('touchstart', onCanvasTouchStart, {passive:false});
-canvas.addEventListener('touchmove',  onCanvasTouchMove,  {passive:false});
-canvas.addEventListener('touchend',   onCanvasTouchEnd,   {passive:false});
+  const t = e.touches[0];
+  const dxs = t.clientX - tsx, dys = t.clientY - tsy;
+  const TH = Math.max(20, tileSize * 0.2);
+  if (Math.abs(dxs) < TH && Math.abs(dys) < TH) return;
+  if (Math.abs(dxs) > Math.abs(dys)){ if (dxs > 0) setDir(1,0); else setDir(-1,0); }
+  else { if (dys > 0) setDir(0,1); else setDir(0,-1); }
+  swiping = false;
+}, {passive:true});
 
-/* ====== GAS интеграция ====== */
+canvas.addEventListener('touchend', e=>{ swiping = false; }, {passive:true});
+
+// desktop / mobile click to start
+startOverlay.addEventListener('pointerdown', (e)=>{
+  e.preventDefault();
+  if (!gameStarted) startGame();
+});
+
+canvas.addEventListener('pointerdown', (e)=>{
+  // if overlay hidden and game hasn't started, start too
+  if (!gameStarted && !gameOver){
+    startGame();
+  }
+});
+
+/* ================== Start / Stop ================== */
+function startGame(){
+  if (gameStarted) return;
+  gameStarted = true;
+  gameOver = false;
+  startOverlay.style.display = 'none';
+  startOverlay.setAttribute('aria-hidden','true');
+  // первый шаг через stepDelay
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(performStep, stepDelay);
+  requestAnimationFrame(renderLoop);
+}
+
+/* ================== GAS integration (fire and forget) ================== */
 async function sendScoreToSheets({username, score, tg_id}){
-  const json = JSON.stringify({ username, score:String(score), tg_id });
+  const payload = { username, score: String(score), tg_id };
   try{
+    // try sendBeacon first (best for background)
     if (navigator.sendBeacon){
-      const ok = navigator.sendBeacon(LB_URL, new Blob([json], { type:'text/plain;charset=UTF-8' }));
+      const ok = navigator.sendBeacon(LB_URL, new Blob([JSON.stringify(payload)], { type:'application/json' }));
       if (ok) return {ok:true, via:'beacon'};
     }
   }catch(_){}
   try{
-    await fetch(LB_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: json });
+    // no-cors mode fallback to avoid CORS failing in WebApp environments
+    await fetch(LB_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     return {ok:true, via:'no-cors'};
-  }catch(_){}
-  try{
-    const res = await fetch(LB_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: json });
-    return {ok:res.ok, via:'json', status:res.status};
-  }catch(e){ return {ok:false, error:String(e)}; }
+  }catch(e){
+    try{
+      const res = await fetch(LB_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      return {ok:res.ok, status:res.status};
+    }catch(err){ return {ok:false, error:String(err)}; }
+  }
 }
-async function getTopFromSheets(){ const res = await fetch(LB_URL); if (!res.ok) throw new Error('LB fetch failed'); return res.json(); }
 
-/* ====== Конец игры ====== */
-async function onGameOver(){
-  const score = Number(scoreVar) || 0;
-  const username = getTgUsername() || 'Игрок';
-  const tg_id = getTgId() || '';
-
-  try { await sendScoreToSheets({ username, score, tg_id }); } catch(e){ console.warn('GAS send err', e); }
-
-  btnRestart.style.display='block';
-  btnShare.style.display='block';
+async function getTopFromSheets(){
+  const res = await fetch(LB_URL);
+  if (!res.ok) throw new Error('LB fetch failed');
+  return res.json();
 }
-btnRestart.addEventListener('click',  ()=> initGame());
-btnRestart.addEventListener('touchstart', e=>{ e.preventDefault(); initGame(); }, {passive:false});
 
-/* ====== Лидерборд (с «Загрузка…») ====== */
-const lbModal=document.getElementById('leaderboardModal');
-const lbList=document.getElementById('lbList');
-const lbClose=document.getElementById('lbClose');
-const lbLoading=document.getElementById('lbLoading');
-
-function openLeaderboard(top=[], meName=null, myTgId=''){
-  lbList.innerHTML='';
-  top.slice(0,10).forEach((row,idx)=>{
-    const isMe=(myTgId && row.tg_id==myTgId)||(!myTgId && row.username===meName);
-    const li=document.createElement('li');
-    if (idx < 5) li.classList.add('lb-top5');
-    if (isMe) li.classList.add('lb-item-me');
-    li.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;">
-      <span>#${idx+1} ${row.username || 'Игрок'}</span>
-      <strong>${row.score}</strong></div>`;
-    lbList.appendChild(li);
-  });
-  lbLoading.hidden = true;
-  lbModal.hidden=false;
-}
-lbClose?.addEventListener('click',()=> lbModal.hidden=true);
-lbModal?.addEventListener('click',e=>{ if(e.target===lbModal) lbModal.hidden=true; });
-
-btnShare.addEventListener('click', async ()=>{
-  lbLoading.hidden = false;
-  lbList.innerHTML = '';
-  lbModal.hidden = false;
-  try{ const data=await getTopFromSheets(); openLeaderboard(data.top||[], getTgUsername(), getTgId()); }
-  catch(e){ lbLoading.hidden=true; lbList.innerHTML='<div class="lb-loading">Не удалось загрузить таблицу :(</div>'; console.warn(e); }
-});
-
-/* ====== Старт ====== */
+/* ================== Start of game on load ================== */
 resizeCanvas();
 initGame();
 requestAnimationFrame(renderLoop);
+
+/* expose some debug utilities (optional) */
+window._hp = { initGame, startGame, snake, tileSize, COLS, ROWS };
+
 </script>
 </body>
 </html>
+
