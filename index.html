@@ -5,26 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>Holly Polly — Змейка</title>
 
-<!-- Telegram WebApp SDK (если нужна интеграция) -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-<!-- прелоады -->
-<link rel="preload" as="image" href="golova.png">
-<link rel="preload" as="image" href="telo1.png">
-<link rel="preload" as="image" href="telo2.png">
-<link rel="preload" as="image" href="flower.png">
 
 <style>
   :root{
-    --page-bg: #ff4da6; /* розовый из твоего изображения */
+    --page-bg: #ff4da6; /* ваш розовый */
     --field-bg: #E1CCFB;
     --control-green: #2e8b57;
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --btn-bg: #2e8b57;
+    --btn-color: #fff;
   }
 
   html,body{
     height:100dvh;
-    min-height:100svh;
     margin:0;
     background:var(--page-bg);
     -webkit-text-size-adjust:100%;
@@ -61,38 +54,104 @@
     user-select:none;
   }
 
-  /* Подсказочный оверлей (старт / game over) */
+  /* overlay старт / game over */
   .overlay-start{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:60;
     pointer-events:auto;
   }
   .overlay-start .msg{
-    padding:14px 18px;
-    background:rgba(0,0,0,0.32);
-    color:#fff;
-    border-radius:12px;
-    font-size:18px;
-    text-align:center;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    user-select:none;
+    padding:14px 18px; background:rgba(0,0,0,0.32); color:#fff; border-radius:12px;
+    font-size:18px; text-align:center; backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px); white-space:pre-line;
   }
 
-  /* Скрытые элементы управления (мы их убрали) */
-  #controls{ display:none; }
+  /* кнопки поверх поля (появляются на Game Over) */
+  .overlay-controls{
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:70;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    align-items:center;
+    pointer-events:auto;
+  }
+  .ov-btn{
+    background:var(--btn-bg);
+    color:var(--btn-color);
+    border:none;
+    padding:14px 26px;
+    border-radius:12px;
+    font-size:18px;
+    cursor:pointer;
+    box-shadow:0 6px 12px rgba(0,0,0,0.18);
+  }
+
+  /* лидерборд modal */
+  .lb-modal{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:120; }
+  .lb-modal[hidden]{ display:none; }
+  .lb-card{ background:#fff; border-radius:14px; width:min(540px,94vw); box-shadow:0 10px 40px rgba(0,0,0,.35); padding:12px 14px; max-height:70vh; overflow:auto; }
+  .lb-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .lb-head h3{ margin:0; font-size:18px; }
+  .lb-close{ background:#eee; border:none; border-radius:8px; padding:6px 10px; cursor:pointer; }
+  .lb-list{ margin:8px 0 0; padding:0 10px 8px; list-style:none; }
+  .lb-item{ padding:8px; border-radius:8px; display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; }
+  .lb-top5{ background: #fff8d6; }
+
+  /* loading overlay for preloading assets */
+  #loadingOverlay{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:9999;
+    background:rgba(0,0,0,0.5); color:#fff; font-size:16px; gap:12px; flex-direction:column;
+  }
+  #loadingBar{ width:64%; max-width:420px; height:12px; background:rgba(255,255,255,0.15); border-radius:8px; overflow:hidden; }
+  #loadingProgress{ height:100%; width:0%; background:linear-gradient(90deg,#fff 0,#ffd 60%); transition:width .18s ease; }
+
+  @media (max-width:480px){
+    .ov-btn{ font-size:16px; padding:12px 20px; }
+    .overlay-controls{ gap:10px; }
+  }
 </style>
 </head>
 <body>
   <header>
-    <img src="logo.png" alt="logo" decoding="async" />
+    <img src="logo.png" alt="logo" decoding="async">
     <div class="slogan">Holly Polly — твоя лучшая подруга!</div>
   </header>
 
   <div id="container" role="application" aria-label="Игра Змейка">
     <canvas id="game" aria-hidden="false"></canvas>
 
+    <!-- overlay start / game over -->
     <div id="startOverlay" class="overlay-start" aria-hidden="false">
-      <div id="startMsg" class="msg">Тапни, чтобы начать</div>
+      <div id="startMsg" class="msg">Загрузка...</div>
+    </div>
+
+    <!-- overlay controls (Restart + Leaderboard) - hidden until game over -->
+    <div id="overlayControls" class="overlay-controls" style="display:none; pointer-events:auto;">
+      <button id="btnRestart" class="ov-btn">Заново</button>
+      <button id="btnShare" class="ov-btn">Таблица лидеров</button>
+    </div>
+  </div>
+
+  <!-- Leaderboard modal -->
+  <div id="leaderboardModal" class="lb-modal" hidden>
+    <div class="lb-card">
+      <div class="lb-head">
+        <h3>Таблица лидеров</h3>
+        <button id="lbClose" class="lb-close">✕</button>
+      </div>
+      <div id="lbLoading" style="display:none;margin-top:8px;">Загрузка...</div>
+      <ol id="lbList" class="lb-list"></ol>
+    </div>
+  </div>
+
+  <!-- Loading overlay during asset preload -->
+  <div id="loadingOverlay">
+    <div id="loadingText">Загрузка ассетов... 0%</div>
+    <div id="loadingBar"><div id="loadingProgress"></div></div>
+    <div>
+      <button id="retryAssets" style="display:none;padding:8px 12px;border-radius:8px;">Повторить</button>
     </div>
   </div>
 
@@ -100,26 +159,23 @@
 /* ================== CONFIG ================== */
 const LB_URL = 'https://script.google.com/macros/s/AKfycbwWwEFARyVpWEqLUcQ5FCAUUy6EDf8xXxVdC1FuyaYfGkySRK6e7Ryq_nM2X2RWn3YZ/exec';
 
-// Размер поля (изменено)
-const COLS = 12;
-const ROWS = 22;
-
+const COLS = 12, ROWS = 22;
 const BASE_STEP_MS = 120;
-// стартовая задержка увеличена на 30% (т.е. игра медленнее)
+// старт медленнее (на 30%)
 const START_SPEED_MULT = 1.30;
 let stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
 
-// ретина/рэндер-скейл, оптимизирован для мобильных устройств (не слишком большой DPR)
-const RENDER_SCALE = 1.5; // раньше был 2 — уменьшаем, чтобы снизить нагрузку
+// DPR clamp для оптимизации
+const RENDER_SCALE = 1.2;
 let DPR = 1;
 
-/* параметры частиц (замедление + увеличение жизни) */
-const PARTICLE_SPEED_FACTOR = 0.32; // сильно уменьшили (медленнее)
+/* Particles tuning (медленнее и дольше) */
+const PARTICLE_SPEED_FACTOR = 0.32;
 const PARTICLE_LIFE_BASE = 48;
 const PARTICLE_LIFE_RAND = 48;
 const PARTICLE_LIFE_FACTOR = 1.6;
 
-/* остальные настройки */
+/* Food & visuals */
 const FOOD_SCALE = 2.42;
 const MAX_OVERFLOW_PCT = 0.65;
 const MAX_OVERFLOW_TILES = 0.9;
@@ -131,96 +187,60 @@ const SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT;
 const MIN_STEP = 25;
 const SMOOTH_LERP = 0.14;
 
-/* ================== Telegram bootstrap ================== */
-(function tgReady(){
-  try{
-    if (Telegram?.WebApp){
-      Telegram.WebApp.ready();
-      Telegram.WebApp.expand?.();
-      Telegram.WebApp.disableVerticalSwipes?.();
-    }
-  }catch(e){}
-})();
-function getTgUser(){ return Telegram?.WebApp?.initDataUnsafe?.user || null; }
-function getTgId(){ const u=getTgUser(); return u?.id ? String(u.id) : ''; }
-function getTgUsername(){ const u=getTgUser(); if(!u) return ''; if(u.username) return '@'+u.username; const fn=u.first_name||'', ln=u.last_name||''; return (fn+' '+ln).trim() || 'Игрок'; }
-
-/* ================== DOM & canvas ================== */
+/* ================== DOM refs ================== */
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha:true });
 const container = document.getElementById('container');
 const startOverlay = document.getElementById('startOverlay');
 const startMsg = document.getElementById('startMsg');
+const overlayControls = document.getElementById('overlayControls');
+const btnRestart = document.getElementById('btnRestart');
+const btnShare = document.getElementById('btnShare');
 
-let tileSize, canvasW, canvasH;
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingText = document.getElementById('loadingText');
+const loadingProgress = document.getElementById('loadingProgress');
+const retryAssets = document.getElementById('retryAssets');
 
-/* ===== оптимизированный fit/resize ===== */
-function fitLayout(){
-  // максимально вмещаем поле и оставляем запас
-  const vw = window.innerWidth;
-  const vh = Math.min(window.visualViewport?.height || window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
+const lbModal = document.getElementById('leaderboardModal');
+const lbList = document.getElementById('lbList');
+const lbClose = document.getElementById('lbClose');
+const lbLoading = document.getElementById('lbLoading');
 
-  const headerH = document.querySelector('header')?.getBoundingClientRect().height || 0;
-  const EXTRA_BOTTOM = 18;
-
-  const maxW = Math.min(vw - 32, 960);
-  const sizeByW = Math.floor(maxW / COLS);
-  const freeH = vh - headerH - EXTRA_BOTTOM;
-  const sizeByH = Math.floor(freeH / ROWS);
-
-  // не опускаем слишком маленькие размеры
-  tileSize = Math.max(12, Math.min(sizeByW, sizeByH));
-}
-
-function resizeCanvas(){
-  fitLayout();
-
-  const cssW = tileSize * COLS;
-  const cssH = tileSize * ROWS;
-  canvasW = cssW; canvasH = cssH;
-
-  canvas.style.width = cssW + 'px';
-  canvas.style.height = cssH + 'px';
-  container.style.width = cssW + 'px';
-  container.style.height = cssH + 'px';
-
-  const device = Math.max(1, window.devicePixelRatio || 1);
-  DPR = Math.min(2, device * RENDER_SCALE); // clamp DPR <= 2 для мобильной оптимизации
-
-  canvas.width = Math.round(cssW * DPR);
-  canvas.height = Math.round(cssH * DPR);
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-}
-window.addEventListener('resize', ()=>{ resizeCanvas(); drawStatic(); });
-window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ resizeCanvas(); drawStatic(); }, 120) });
-resizeCanvas();
-
-/* ================== Assets ================== */
-function mkImg(src){ const i = new Image(); i.decoding='async'; i.loading='eager'; i.src=src; return i; }
+/* ================== ASSETS lists (to preload) ================== */
 const categoryConfig = {
-  balzam: { prefix: 'balzam', count: 8, points: 50, w:1, h:1, weight:1 },
-  cream:  { prefix: 'Cream',  count: 3, points:100, w:1, h:2, weight:1 },
-  shampoo:{ prefix: 'Shampoo',count: 3, points:150, w:1, h:2, weight:1 },
-  tip:    { prefix: 'tip',    count: 2, points:200, w:1, h:2, weight:0.35 }
+  balzam:   {prefix:'balzam',    count:8,  points:50,  w:1, h:1, weight: 1},
+  cream:    {prefix:'Cream',     count:3,  points:100, w:1, h:2, weight: 1},
+  shampoo:  {prefix:'Shampoo',   count:3,  points:150, w:1, h:2, weight: 1},
+  tip:      {prefix:'tip',       count:2,  points:200, w:1, h:2, weight: 0.35}
 };
 const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
 
-const imagesByCategory = {};
+const STATIC_ASSETS = [
+  {key:'golova', url:'golova.png'},
+  {key:'telo1', url:'telo1.png'},
+  {key:'telo2', url:'telo2.png'},
+  {key:'flower', url:'flower.png'}
+];
+// build dynamic assets from categories
+const ASSET_LIST = STATIC_ASSETS.slice();
 for (const k in categoryConfig){
-  imagesByCategory[k] = [];
   const cfg = categoryConfig[k];
-  for (let i=1; i<=cfg.count; i++) imagesByCategory[k].push(mkImg(`assets/${cfg.prefix}${i}.png`));
+  for (let i=1;i<=cfg.count;i++){
+    ASSET_LIST.push({ key: `${k}${i}`, url: `assets/${cfg.prefix}${i}.png` });
+  }
 }
-const hairsprayImages = [];
-for (let i=1;i<=hairsprayConfig.count;i++) hairsprayImages.push(mkImg(`assets/${hairsprayConfig.prefix}${i}.png`));
+for (let i=1;i<=hairsprayConfig.count;i++){
+  ASSET_LIST.push({ key: `hairspray${i}`, url: `assets/${hairsprayConfig.prefix}${i}.png` });
+}
 
-const headImg = mkImg('golova.png');
-const telo1 = mkImg('telo1.png');
-const telo2 = mkImg('telo2.png');
-const flowerImg = mkImg('flower.png');
+/* ================== state ================== */
+let imagesByCategory = {}; // will be filled after preload
+let hairsprayImages = [];
+let headImg, bodyImg, tailImg, flowerImg;
 
-/* ================== State ================== */
+let tileSize=40, canvasW=0, canvasH=0;
+
 let snake = [], dx = 1, dy = 0;
 let food = null, extraFood = null, particles = [];
 let gameOver = false, timerId = null;
@@ -228,222 +248,121 @@ let eatenSinceSpeedup = 0, totalEaten = 0, scoreVar = 0, globalTime = 0;
 let pendingHairspray = false;
 let gameStarted = false;
 
-/* ================== Utils ================== */
-function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
-function rectFree(x,y,w,h){
-  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
-  for (let sx=x; sx<x+w; sx++) for (let sy=y; sy<y+h; sy++) if(pointOnSnake(sx,sy)) return false;
-  return true;
-}
-function lerp(a,b,t){ return a + (b-a) * t; }
-function chooseCategory(){
-  const keys = Object.keys(categoryConfig);
-  const pool = [];
-  for (const k of keys){
-    const w = categoryConfig[k].weight;
-    const times = Math.max(1, Math.round(w * 10));
-    for (let i=0;i<times;i++) pool.push(k);
-  }
-  return pool[randInt(0,pool.length-1)];
-}
-
-/* ================== Food placement ================== */
-function placeFood(){
-  const maxAttempts = 1000;
-  let attempts = 0;
-  food = null;
-  while(attempts++ < maxAttempts){
-    const cat = chooseCategory();
-    const cfg = categoryConfig[cat];
-    const w = cfg.w, h = cfg.h;
-    const x = randInt(0, COLS - w);
-    const y = randInt(0, ROWS - h);
-    if (!rectFree(x,y,w,h)) continue;
-    const imgs = imagesByCategory[cat];
-    const img = imgs.length ? imgs[randInt(0, imgs.length-1)] : null;
-    food = { x, y, cat, img, points: cfg.points, w, h };
-    break;
-  }
-  if (!food){
-    outer: for (let yy=0; yy<ROWS; yy++){
-      for (let xx=0; xx<COLS; xx++){
-        if (!pointOnSnake(xx,yy)){
-          const imgs = imagesByCategory['balzam'];
-          food = { x:xx, y:yy, cat:'balzam', img: imgs[0]||null, points:50, w:1, h:1 };
-          break outer;
+/* ================== Preload utilities ================== */
+function loadImageWithTimeout(url, timeoutMs = 9000, tries = 2){
+  return new Promise(async (resolve, reject) => {
+    for (let attempt=1; attempt<=tries; attempt++){
+      try{
+        const img = new Image();
+        img.decoding = 'async';
+        img.loading = 'eager';
+        //img.crossOrigin = 'anonymous'; // uncomment if needed & server CORS enabled
+        const p = new Promise((res, rej) => {
+          img.onload = () => res(img);
+          img.onerror = (e) => rej(new Error('load error ' + url));
+        });
+        img.src = url;
+        if (img.decode){
+          await Promise.race([ img.decode(), new Promise((_, r)=>setTimeout(()=>r(new Error('decode timeout')), timeoutMs)) ]);
+          return resolve(img);
+        } else {
+          const loaded = await Promise.race([ p, new Promise((_, r)=>setTimeout(()=>r(new Error('load timeout')), timeoutMs)) ]);
+          return resolve(loaded);
         }
+      } catch(err){
+        console.warn('Asset load failed', url, 'attempt', attempt, err);
+        if (attempt === tries) return reject(err);
+        // brief pause before retry
+        await new Promise(r => setTimeout(r, 300 + Math.random() * 200));
       }
     }
-  }
-
-  if (pendingHairspray){
-    const wH = hairsprayConfig.w, hH = hairsprayConfig.h;
-    let placed = false, attempts2 = 0;
-    while(attempts2++ < 800 && !placed){
-      const x = randInt(0, COLS - wH);
-      const y = randInt(0, ROWS - hH);
-      if (!rectFree(x,y,wH,hH)) continue;
-      if (!(x + wH <= food.x || x >= food.x + food.w || y + hH <= food.y || y >= food.y + food.h)) continue;
-      const img = hairsprayImages.length ? hairsprayImages[randInt(0, hairsprayImages.length-1)] : null;
-      extraFood = { x, y, cat:'hairspray', img, points: hairsprayConfig.points, w: wH, h: hH, expiresAt: performance.now() + 3000 };
-      placed = true;
-    }
-    pendingHairspray = false;
-  }
+  });
 }
 
-/* ================== Smooth segments ================== */
-function createSegment(x,y){ return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 }; }
-
-/* ================== Init / restart ================== */
-function initGame(){
-  const cx = Math.floor(COLS/2);
-  const cy = Math.floor(ROWS/2);
-  snake = [ createSegment(cx,cy), createSegment(cx-1,cy), createSegment(cx-2,cy) ];
-  dx = 1; dy = 0;
-  stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
-  food = null; extraFood = null; pendingHairspray = false;
-  particles = [];
-  gameOver = false;
-  eatenSinceSpeedup = 0;
-  totalEaten = 0;
-  scoreVar = 0;
-  placeFood();
-  if (timerId) { clearTimeout(timerId); timerId = null; }
-  // запускаем рендер, но шаги стартуют только после tap
-  requestAnimationFrame(renderLoop);
-}
-
-/* ================== Step logic ================== */
-function willCollide(nx, ny){
-  if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
-  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
-  return false;
-}
-
-async function onGameOver(){
-  gameOver = true;
-  // отправка результата (fire-and-forget)
-  try{ await sendScoreToSheets({ username: getTgUsername()||'Игрок', score: scoreVar, tg_id: getTgId()||'' }); }catch(e){ console.warn('send err', e); }
-
-  // показываем overlay с перезапуском
-  startMsg.textContent = `Игра окончена — счёт: ${scoreVar}\nТапни, чтобы сыграть снова`;
-  startOverlay.style.display = 'flex';
-  startOverlay.setAttribute('aria-hidden','false');
-  gameStarted = false;
-  if (timerId) { clearTimeout(timerId); timerId = null; }
-}
-
-function performStep(){
-  if (gameOver || !gameStarted) return;
-  const headGX = snake[0].x + dx;
-  const headGY = snake[0].y + dy;
-
-  if (willCollide(headGX, headGY)){
-    onGameOver();
-    return;
-  }
-
-  snake.unshift( createSegment(headGX, headGY) );
-
-  // extraFood (hairspray)
-  let ateExtra = false;
-  if (extraFood){
-    if (headGX >= extraFood.x && headGX < extraFood.x + extraFood.w &&
-        headGY >= extraFood.y && headGY < extraFood.y + extraFood.h){
-      scoreVar += extraFood.points;
-      totalEaten++;
-      eatenSinceSpeedup++;
-      spawnParticlesAt(extraFood.x, extraFood.y, extraFood.w, extraFood.h, 'hairspray');
-      extraFood = null;
-      ateExtra = true;
+async function preloadAllAssets(list, onProgress){
+  const images = {};
+  let loaded = 0;
+  for (const item of list){
+    try{
+      const img = await loadImageWithTimeout(item.url, 9000, 2);
+      images[item.key] = img;
+      loaded++;
+      if (onProgress) onProgress(loaded, list.length, item.key, item.url);
+    } catch(err){
+      throw new Error('Failed to load ' + item.url + ' — ' + err.message);
     }
   }
-
-  // main food
-  let ateMain = false;
-  if (food && !ateExtra){
-    if (headGX >= food.x && headGX < food.x + food.w &&
-        headGY >= food.y && headGY < food.y + food.h){
-      ateMain = true;
-      totalEaten++;
-      eatenSinceSpeedup++;
-      scoreVar += food.points;
-      spawnParticlesAt(food.x, food.y, food.w, food.h, food.cat);
-      pendingHairspray = (Math.random() < 0.10);
-      placeFood();
-    }
-  }
-
-  if (!ateMain && !ateExtra) snake.pop();
-
-  if (eatenSinceSpeedup >= 3){
-    stepDelay = Math.max(MIN_STEP, Math.round(stepDelay * SPEED_MULT_COMBINED));
-    eatenSinceSpeedup = 0;
-  }
-
-  if (extraFood && performance.now() > extraFood.expiresAt){
-    extraFood = null;
-  }
-
-  scheduleNextStep();
+  return images;
 }
 
-function scheduleNextStep(){
-  if (timerId) clearTimeout(timerId);
-  timerId = setTimeout(performStep, stepDelay);
+/* ================== Flowers: use explicit cells if provided ================== */
+/*
+ * Если вы хотите жёстко указать клетки с цветами — присвойте массив
+ * window._FLOWER_CELLS = [ [x,y], [x,y], ... ]
+ * например window._FLOWER_CELLS = [[0,2],[3,4],...]
+ *
+ * По умолчанию мы сгенерируем детерминированный список, но вы можете заменить.
+ */
+let flowerCells = null; // null => use seeded generator fallback
+
+function generateDefaultFlowerCells(){
+  // deterministic pseudo-random distribution mapped to cells
+  const seed = 1337;
+  function rng(a){ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967295; }
+  const r = rng(seed);
+  const count = Math.round(COLS * ROWS * 0.25); // ~25% cells
+  const arr = new Set();
+  let s = seed;
+  while(arr.size < count){
+    const v = rng(s++);
+    const x = Math.floor(v * COLS);
+    const y = Math.floor(rng(s++) * ROWS);
+    arr.add(x + ',' + y);
+  }
+  return Array.from(arr).map(str => str.split(',').map(Number));
 }
 
-/* ================== Particles (медленнее + дольше) ================== */
-function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
-  const cx = (cellX + cellsW/2) * tileSize;
-  const cy = (cellY + cellsH/2) * tileSize;
-  const char = (cat === 'hairspray') ? '⭐️' : '❤️';
-
-  const SLOW_MULT = PARTICLE_SPEED_FACTOR;
-  const LIFE_BASE = PARTICLE_LIFE_BASE;
-  const LIFE_RAND = PARTICLE_LIFE_RAND;
-  const LIFE_FACTOR = PARTICLE_LIFE_FACTOR;
-
-  // ограничиваем количество частиц для производительности
-  const count = Math.max(3, Math.min(8, Math.floor(HEARTS_COUNT * 0.9)));
-
-  for (let i=0;i<count;i++){
-    const angle = Math.random() * Math.PI * 2;
-    const baseSpeed = 0.5 + Math.random() * 1.2;
-    const vyBias = (cat === 'hairspray') ? -0.35 - Math.random()*0.15 : (Math.random()*0.3 - 0.15);
-    const life = Math.round((LIFE_BASE + Math.floor(Math.random()*LIFE_RAND)) * LIFE_FACTOR);
-    const size = tileSize * (0.45 + Math.random() * 0.6);
-    const vx = Math.cos(angle) * baseSpeed * (0.5 + Math.random()*0.7) * SLOW_MULT;
-    const vy = (Math.sin(angle) * baseSpeed * (0.5 + Math.random()*0.7) + vyBias) * SLOW_MULT;
-    particles.push({
-      type:'emoji',
-      char,
-      x: cx + (Math.random()-0.5) * tileSize * 0.2,
-      y: cy + (Math.random()-0.5) * tileSize * 0.2,
-      vx,
-      vy,
-      size,
-      life,
-      maxLife: life
-    });
+function useFlowerCellsFromWindowOrDefault(){
+  if (Array.isArray(window._FLOWER_CELLS) && window._FLOWER_CELLS.length){
+    // validate
+    flowerCells = window._FLOWER_CELLS.map(c => [Number(c[0]), Number(c[1])]).filter(c => c[0]>=0 && c[0]<COLS && c[1]>=0 && c[1]<ROWS);
+  } else {
+    flowerCells = generateDefaultFlowerCells();
   }
 }
 
-function updateParticles(){
-  // обновляем с оптимизацией: удаляем вне канвы
-  for (let i = particles.length - 1; i >= 0; i--){
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vx *= 0.994;
-    p.vy += 0.006;
-    p.life--;
-    // удаляем, если за пределами расширенной зоны или жизнь кончилась
-    if (p.life <= 0 || p.x < -50 || p.x > canvasW + 50 || p.y < -50 || p.y > canvasH + 50) particles.splice(i,1);
-  }
+/* ================== Layout / canvas fit ================== */
+function fitLayout(){
+  const vw = window.innerWidth;
+  const vh = Math.min(window.visualViewport?.height || window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
+  const headerH = document.querySelector('header')?.getBoundingClientRect().height || 0;
+  const EXTRA_BOTTOM = 18;
+  const maxW = Math.min(vw - 32, 960);
+  const sizeByW = Math.floor(maxW / COLS);
+  const freeH = vh - headerH - EXTRA_BOTTOM;
+  const sizeByH = Math.floor(freeH / ROWS);
+  tileSize = Math.max(12, Math.min(sizeByW, sizeByH));
 }
+
+function resizeCanvas(){
+  fitLayout();
+  const cssW = tileSize * COLS;
+  const cssH = tileSize * ROWS;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  container.style.width = cssW + 'px';
+  container.style.height = cssH + 'px';
+
+  const device = Math.max(1, window.devicePixelRatio || 1);
+  DPR = Math.min(1.6, device * RENDER_SCALE); // clamp for mobile performance
+
+  canvas.width = Math.round(cssW * DPR);
+  canvas.height = Math.round(cssH * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.imageSmoothingEnabled = true;
+}
+window.addEventListener('resize', ()=>{ resizeCanvas(); drawStatic(); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ resizeCanvas(); drawStatic(); }, 120); });
 
 /* ================== Drawing helpers ================== */
 function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
@@ -457,7 +376,6 @@ function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
   ctx.fill();
   ctx.restore();
 }
-
 function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
   const desiredW = Math.round(areaW * FOOD_SCALE);
   const desiredH = Math.round(areaH * FOOD_SCALE);
@@ -470,7 +388,26 @@ function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
   return { drawW, drawH, areaLeft, areaTop, areaW, areaH, maxAllowedW, maxAllowedH };
 }
 
-/* ================== Draw food (с вертикальным oval для hairspray) ================== */
+/* ================== Draw background flowers only on specified cells ================== */
+function drawFlowers(){
+  if (!flowerImg || !flowerImg.complete || !flowerImg.naturalWidth) return;
+  if (!Array.isArray(flowerCells) || !flowerCells.length) return;
+  for (const [cxCell, cyCell] of flowerCells){
+    const cx = Math.round((cxCell + 0.5) * tileSize);
+    const cy = Math.round((cyCell + 0.5) * tileSize);
+    const base = Math.max(8, Math.floor(tileSize * 0.9));
+    const scale = 0.9 + ((cxCell + cyCell) % 5) * 0.06;
+    const w = Math.round(base * scale);
+    const h = w;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalAlpha = 0.9;
+    ctx.drawImage(flowerImg, -w/2, -h/2, w, h);
+    ctx.restore();
+  }
+}
+
+/* ================== Food drawing (hairspray vertical oval) ================== */
 function drawSingleFood(it, nowSec){
   if (!it) return;
   const cellsW = it.w, cellsH = it.h;
@@ -480,13 +417,12 @@ function drawSingleFood(it, nowSec){
   const areaTop  = it.y * tileSize;
 
   if (it.cat === 'hairspray'){
-    // vertical pulse (ry > rx), чуть больше
     const pulse = 1 + 0.26 * Math.sin(nowSec * 4 + it.x * 1.7 + it.y * 0.9);
     const cx = Math.round(areaLeft + areaW/2);
     const cy = Math.round(areaTop + areaH/2);
     const base = Math.min(areaW, areaH);
-    const ry = Math.max(14, Math.round((base/1.8 + 18) * pulse)); // высота (больше)
-    const rx = Math.max(8, Math.round((base/3.2 + 8) * pulse));   // ширина (меньше) => вертикальная ориентация
+    const ry = Math.max(14, Math.round((base/1.8 + 18) * pulse));
+    const rx = Math.max(8, Math.round((base/3.2 + 8) * pulse));
     drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98);
   }
 
@@ -518,7 +454,7 @@ function drawFood(nowSec){
   if (extraFood) drawSingleFood(extraFood, nowSec);
 }
 
-/* ================== Draw snake with rotated telo1 segments ================== */
+/* ================== Snake drawing with rotated body segments ================== */
 function drawSnake(){
   for (let i=0;i<snake.length;i++){
     const s = snake[i];
@@ -532,45 +468,24 @@ function drawSnake(){
     const s = snake[i];
     const size = Math.max(6, Math.floor(tileSize * 1.06));
     if (i === snake.length - 1){
-      if (telo2 && telo2.complete && telo2.naturalWidth){
+      if (tailImg && tailImg.complete && tailImg.naturalWidth){
         const tail = snake[snake.length - 1];
         const prev = snake[snake.length - 2];
         const angle = Math.atan2(prev.py - tail.py, prev.px - tail.px);
-        ctx.save();
-        ctx.translate(tail.px, tail.py);
-        ctx.rotate(angle + Math.PI/2);
-        let iw = telo2.naturalWidth, ih = telo2.naturalHeight;
-        let aspect = iw / ih;
-        let dw = size, dh = size;
-        if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
-        ctx.drawImage(telo2, -dw/2, -dh/2, dw, dh);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = '#E159A9';
-        ctx.beginPath();
-        ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
-        ctx.fill();
-      }
+        ctx.save(); ctx.translate(tail.px, tail.py); ctx.rotate(angle + Math.PI/2);
+        let iw = tailImg.naturalWidth, ih = tailImg.naturalHeight; let aspect = iw/ih;
+        let dw = size, dh = size; if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
+        ctx.drawImage(tailImg, -dw/2, -dh/2, dw, dh); ctx.restore();
+      } else { ctx.fillStyle = '#E159A9'; ctx.beginPath(); ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2); ctx.fill(); }
     } else {
-      if (telo1 && telo1.complete && telo1.naturalWidth){
-        const prev = snake[i-1];
-        const next = snake[i+1] || snake[i];
+      if (bodyImg && bodyImg.complete && bodyImg.naturalWidth){
+        const prev = snake[i-1]; const next = snake[i+1] || snake[i];
         const angle = Math.atan2(next.py - prev.py, next.px - prev.px);
-        ctx.save();
-        ctx.translate(s.px, s.py);
-        ctx.rotate(angle + Math.PI/2);
-        let iw = telo1.naturalWidth, ih = telo1.naturalHeight;
-        let aspect = iw / ih;
-        let dw = size, dh = size;
-        if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
-        ctx.drawImage(telo1, -dw/2, -dh/2, dw, dh);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = '#E159A9';
-        ctx.beginPath();
-        ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
-        ctx.fill();
-      }
+        ctx.save(); ctx.translate(s.px, s.py); ctx.rotate(angle + Math.PI/2);
+        let iw = bodyImg.naturalWidth, ih = bodyImg.naturalHeight; let aspect = iw/ih;
+        let dw = size, dh = size; if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
+        ctx.drawImage(bodyImg, -dw/2, -dh/2, dw, dh); ctx.restore();
+      } else { ctx.fillStyle = '#E159A9'; ctx.beginPath(); ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2); ctx.fill(); }
     }
   }
 
@@ -580,37 +495,49 @@ function drawSnake(){
   const headSizeBase = Math.max(6, Math.floor(tileSize * headScale));
   if (headImg && headImg.complete && headImg.naturalWidth){
     const dirAngle = Math.atan2(dy, dx);
-    ctx.save();
-    ctx.translate(hx, hy);
-    ctx.rotate(dirAngle + Math.PI/2);
-    let iw = headImg.naturalWidth, ih = headImg.naturalHeight;
-    let aspect = iw / ih;
-    let dw = headSizeBase, dh = headSizeBase;
-    if (dw / dh > aspect) dw = Math.round(dh * aspect); else dh = Math.round(dw / aspect);
-    ctx.drawImage(headImg, -dw/2, -dh/2, dw, dh);
-    ctx.restore();
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(dirAngle + Math.PI/2);
+    let iw = headImg.naturalWidth, ih = headImg.naturalHeight; let aspect = iw/ih;
+    let dw = headSizeBase, dh = headSizeBase; if (dw/dh>aspect) dw=Math.round(dh*aspect); else dh=Math.round(dw/aspect);
+    ctx.drawImage(headImg, -dw/2, -dh/2, dw, dh); ctx.restore();
   } else {
-    ctx.fillStyle = '#E159A9';
-    ctx.beginPath();
-    ctx.arc(hx, hy, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2);
-    ctx.fill();
+    ctx.fillStyle = '#E159A9'; ctx.beginPath(); ctx.arc(hx, hy, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2); ctx.fill();
     const eyeR = Math.max(2, Math.floor(tileSize/6));
-    const eyeOffsetX = tileSize / 4;
-    const eyeOffsetY = tileSize / 6;
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2);
-    ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2);
-    ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2);
-    ctx.fill();
+    const eyeOffsetX = tileSize / 4; const eyeOffsetY = tileSize / 6;
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2); ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2); ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2); ctx.fill();
   }
 }
 
-/* ================== Particles draw & score ================== */
+/* ================== Particles ================== */
+function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
+  const cx = (cellX + cellsW/2) * tileSize;
+  const cy = (cellY + cellsH/2) * tileSize;
+  const char = (cat === 'hairspray') ? '⭐️' : '❤️';
+  const SLOW_MULT = PARTICLE_SPEED_FACTOR;
+  const LIFE_BASE = PARTICLE_LIFE_BASE;
+  const LIFE_RAND = PARTICLE_LIFE_RAND;
+  const LIFE_FACTOR = PARTICLE_LIFE_FACTOR;
+  const count = Math.max(3, Math.min(8, Math.floor(HEARTS_COUNT * 0.9)));
+  for (let i=0;i<count;i++){
+    const angle = Math.random() * Math.PI * 2;
+    const baseSpeed = 0.5 + Math.random() * 1.2;
+    const vyBias = (cat === 'hairspray') ? -0.35 - Math.random()*0.15 : (Math.random()*0.3 - 0.15);
+    const life = Math.round((LIFE_BASE + Math.floor(Math.random()*LIFE_RAND)) * LIFE_FACTOR);
+    const size = tileSize * (0.45 + Math.random() * 0.6);
+    const vx = Math.cos(angle) * baseSpeed * (0.5 + Math.random()*0.7) * SLOW_MULT;
+    const vy = (Math.sin(angle) * baseSpeed * (0.5 + Math.random()*0.7) + vyBias) * SLOW_MULT;
+    particles.push({ type:'emoji', char, x: cx + (Math.random()-0.5) * tileSize * 0.2, y: cy + (Math.random()-0.5) * tileSize * 0.2, vx, vy, size, life, maxLife: life });
+  }
+}
+function updateParticles(){
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.994; p.vy += 0.006;
+    p.life--;
+    if (p.life <= 0 || p.x < -50 || p.x > canvasW + 50 || p.y < -50 || p.y > canvasH + 50) particles.splice(i,1);
+  }
+}
 function drawParticles(){
   if (!particles.length) return;
   ctx.save();
@@ -624,14 +551,13 @@ function drawParticles(){
       ctx.globalAlpha = 1;
     } else {
       ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
-      ctx.fillStyle = p.color || '#fff';
-      ctx.beginPath(); ctx.arc(Math.round(p.x), Math.round(p.y), p.r, 0, Math.PI*2); ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.fillStyle = p.color || '#fff'; ctx.beginPath(); ctx.arc(Math.round(p.x), Math.round(p.y), p.r, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
     }
   }
   ctx.restore();
 }
 
+/* ================== Score ================== */
 function drawScore(){
   ctx.save();
   ctx.fillStyle = '#000';
@@ -645,58 +571,122 @@ function drawScore(){
 function renderLoop(ts){
   globalTime = ts / 1000;
   if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
-
   ctx.clearRect(0,0,canvasW,canvasH);
-
-  // порядок: фон-цветы (оставляем, если есть), еда, змейка, частицы, счёт
   drawFlowers();
   drawFood(globalTime);
   drawSnake();
   drawParticles();
   drawScore();
-
   updateParticles();
-
   requestAnimationFrame(renderLoop);
 }
 
-/* ================== Flowers background (same as before) ================== */
-const flowerSeed = 1337;
-let flowers = [];
-function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967295;}}
-function generateFlowers(){
-  flowers.length = 0;
-  const rng = mulberry32(flowerSeed);
-  const target = Math.round(COLS * ROWS * 0.25);
-  for (let i=0;i<target;i++){
-    const ux = rng(), uy = rng();
-    const rot = (rng() - 0.5) * 0.9;
-    const scale = 0.8 + rng()*0.6;
-    flowers.push({ux,uy,rot,scale});
-  }
-}
-generateFlowers();
+/* ================== Utils ================== */
+function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
+function rectFree(x,y,w,h){ if (x<0||y<0||x+w>COLS||y+h>ROWS) return false; for (let sx=x;sx<x+w;sx++) for (let sy=y;sy<y+h;sy++) if(pointOnSnake(sx,sy)) return false; return true; }
+function lerp(a,b,t){ return a + (b-a) * t; }
+function chooseCategory(){ const keys=Object.keys(categoryConfig); const pool=[]; for(const k of keys){ const w = categoryConfig[k].weight; const times=Math.max(1,Math.round(w*10)); for(let i=0;i<times;i++) pool.push(k); } return pool[randInt(0,pool.length-1)]; }
 
-function drawFlowers(){
-  if (!flowerImg.complete || !flowerImg.naturalWidth) return;
-  const base = Math.max(8, Math.floor(tileSize * 0.42));
-  for (const f of flowers){
-    const x = Math.round(f.ux * canvasW);
-    const y = Math.round(f.uy * canvasH);
-    const size = Math.round(base * f.scale);
-    const w = size, h = size;
-    ctx.save();
-    ctx.translate(x,y);
-    ctx.rotate(f.rot);
-    ctx.globalAlpha = 0.84;
-    ctx.drawImage(flowerImg, -w/2, -h/2, w, h);
-    ctx.restore();
+/* ================== Food placement ================== */
+function placeFood(){
+  const maxAttempts = 1000; let attempts=0; food=null;
+  while(attempts++ < maxAttempts){
+    const cat = chooseCategory(); const cfg = categoryConfig[cat];
+    const w=cfg.w, h=cfg.h; const x=randInt(0, COLS-w); const y=randInt(0, ROWS-h);
+    if (!rectFree(x,y,w,h)) continue;
+    const imgs = imagesByCategory[cat] || []; const img = imgs.length ? imgs[randInt(0, imgs.length-1)] : null;
+    food = { x, y, cat, img, points: cfg.points, w, h };
+    break;
+  }
+  if (!food){
+    outer: for (let yy=0; yy<ROWS; yy++) for (let xx=0; xx<COLS; xx++) if (!pointOnSnake(xx,yy)){ const imgs = imagesByCategory['balzam']||[]; food={ x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1 }; break outer; }
+  }
+
+  if (pendingHairspray){
+    const wH = hairsprayConfig.w, hH = hairsprayConfig.h; let placed=false, attempts2=0;
+    while(attempts2++<800 && !placed){
+      const x = randInt(0, COLS-wH); const y = randInt(0, ROWS-hH);
+      if (!rectFree(x,y,wH,hH)) continue;
+      if (!(x + wH <= food.x || x >= food.x + food.w || y + hH <= food.y || y >= food.y + food.h)) continue;
+      const img = hairsprayImages.length ? hairsprayImages[randInt(0, hairsprayImages.length-1)] : null;
+      extraFood = { x, y, cat:'hairspray', img, points: hairsprayConfig.points, w: wH, h: hH, expiresAt: performance.now() + 3000 };
+      placed = true;
+    }
+    pendingHairspray = false;
   }
 }
+
+/* ================== Segments ================== */
+function createSegment(x,y){ return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 }; }
+
+/* ================== Init / restart ================== */
+function initGame(){
+  resizeCanvas();
+  useFlowerCellsFromWindowOrDefault();
+
+  const cx = Math.floor(COLS/2);
+  const cy = Math.floor(ROWS/2);
+  snake = [ createSegment(cx,cy), createSegment(cx-1,cy), createSegment(cx-2,cy) ];
+  dx=1; dy=0; stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
+  food=null; extraFood=null; pendingHairspray=false; particles=[]; gameOver=false;
+  eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
+  placeFood();
+  overlayControls.style.display = 'none';
+  startOverlay.style.display = 'flex';
+  startOverlay.setAttribute('aria-hidden','false');
+  startMsg.textContent = 'Тапни, чтобы начать';
+  gameStarted = false;
+  if (timerId){ clearTimeout(timerId); timerId=null; }
+  requestAnimationFrame(renderLoop);
+}
+
+/* ================== Step logic ================== */
+function willCollide(nx, ny){
+  if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
+  for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
+  return false;
+}
+
+async function onGameOver(){
+  gameOver = true;
+  // отправляем результат (fire-and-forget)
+  try{ await sendScoreToSheets({ username: getTgUsername()||'Игрок', score: scoreVar, tg_id: getTgId()||'' }); } catch(e){ console.warn('sendScore err', e); }
+  // покажем кнопки
+  overlayControls.style.display = 'flex';
+  startMsg.textContent = `Игра окончена — счёт: ${scoreVar}`;
+  startOverlay.style.display = 'flex';
+  startOverlay.setAttribute('aria-hidden','false');
+  gameStarted = false;
+  if (timerId){ clearTimeout(timerId); timerId = null; }
+}
+
+function performStep(){
+  if (gameOver || !gameStarted) return;
+  const headGX = snake[0].x + dx, headGY = snake[0].y + dy;
+  if (willCollide(headGX, headGY)){ onGameOver(); return; }
+  snake.unshift(createSegment(headGX, headGY));
+  let ateExtra = false;
+  if (extraFood){
+    if (headGX >= extraFood.x && headGX < extraFood.x + extraFood.w && headGY >= extraFood.y && headGY < extraFood.y + extraFood.h){
+      scoreVar += extraFood.points; totalEaten++; eatenSinceSpeedup++; spawnParticlesAt(extraFood.x, extraFood.y, extraFood.w, extraFood.h, 'hairspray'); extraFood = null; ateExtra = true;
+    }
+  }
+  if (food && !ateExtra){
+    if (headGX >= food.x && headGX < food.x + food.w && headGY >= food.y && headGY < food.y + food.h){
+      totalEaten++; eatenSinceSpeedup++; scoreVar += food.points; spawnParticlesAt(food.x, food.y, food.w, food.h, food.cat); pendingHairspray=(Math.random()<0.10); placeFood();
+    }
+  }
+  if (!ateExtra && !food) { /* nothing */ }
+  if (!ateExtra && !(food && (headGX >= food.x && headGX < food.x + food.w && headGY >= food.y && headGY < food.y + food.h))) snake.pop();
+  if (eatenSinceSpeedup >= 3){ stepDelay = Math.max(MIN_STEP, Math.round(stepDelay * SPEED_MULT_COMBINED)); eatenSinceSpeedup = 0; }
+  if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
+  scheduleNextStep();
+}
+function scheduleNextStep(){ if (timerId) clearTimeout(timerId); timerId = setTimeout(performStep, stepDelay); }
 
 /* ================== Input: keyboard + touch + start by tap ================== */
 function setDir(nx, ny){ if (nx === -dx && ny === -dy) return; dx = nx; dy = ny; }
-
 window.addEventListener('keydown', e=>{
   if (e.key === 'ArrowUp') setDir(0,-1);
   else if (e.key === 'ArrowDown') setDir(0,1);
@@ -705,73 +695,42 @@ window.addEventListener('keydown', e=>{
 });
 
 let tsx=0, tsy=0, swiping=false;
-canvas.addEventListener('touchstart', e=>{ 
-  const t = e.touches[0];
-  tsx = t.clientX; tsy = t.clientY; swiping = true;
-  // single tap to start if not started
-  if (!gameStarted && !gameOver){
-    startGame();
-  }
-}, {passive:true});
+canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; tsx=t.clientX; tsy=t.clientY; swiping=true; if (!gameStarted && !gameOver){ startGame(); } }, {passive:true});
+canvas.addEventListener('touchmove', e=>{ if (!swiping) return; const t=e.touches[0]; const dxs=t.clientX-tsx, dys=t.clientY-tsy; const TH=Math.max(20, tileSize*0.2); if (Math.abs(dxs)<TH && Math.abs(dys)<TH) return; if (Math.abs(dxs)>Math.abs(dys)){ if (dxs>0) setDir(1,0); else setDir(-1,0); } else { if (dys>0) setDir(0,1); else setDir(0,-1); } swiping=false; }, {passive:true});
+canvas.addEventListener('touchend', e=>{ swiping=false; }, {passive:true});
 
-canvas.addEventListener('touchmove', e=>{
-  if (!swiping) return;
-  const t = e.touches[0];
-  const dxs = t.clientX - tsx, dys = t.clientY - tsy;
-  const TH = Math.max(20, tileSize * 0.2);
-  if (Math.abs(dxs) < TH && Math.abs(dys) < TH) return;
-  if (Math.abs(dxs) > Math.abs(dys)){ if (dxs > 0) setDir(1,0); else setDir(-1,0); }
-  else { if (dys > 0) setDir(0,1); else setDir(0,-1); }
-  swiping = false;
-}, {passive:true});
+startOverlay.addEventListener('pointerdown', (e)=>{ e.preventDefault(); if (!gameStarted) startGame(); });
+canvas.addEventListener('pointerdown', (e)=>{ if (!gameStarted && !gameOver){ startGame(); } });
 
-canvas.addEventListener('touchend', e=>{ swiping = false; }, {passive:true});
-
-// desktop / mobile click to start
-startOverlay.addEventListener('pointerdown', (e)=>{
-  e.preventDefault();
-  if (!gameStarted) startGame();
-});
-
-canvas.addEventListener('pointerdown', (e)=>{
-  // if overlay hidden and game hasn't started, start too
-  if (!gameStarted && !gameOver){
-    startGame();
-  }
-});
-
-/* ================== Start / Stop ================== */
 function startGame(){
   if (gameStarted) return;
-  gameStarted = true;
-  gameOver = false;
+  gameStarted = true; gameOver = false;
   startOverlay.style.display = 'none';
   startOverlay.setAttribute('aria-hidden','true');
-  // первый шаг через stepDelay
+  overlayControls.style.display = 'none';
   if (timerId) clearTimeout(timerId);
   timerId = setTimeout(performStep, stepDelay);
   requestAnimationFrame(renderLoop);
 }
 
-/* ================== GAS integration (fire and forget) ================== */
+/* ================== Leaderboard / GAS ================== */
 async function sendScoreToSheets({username, score, tg_id}){
   const payload = { username, score: String(score), tg_id };
   try{
-    // try sendBeacon first (best for background)
     if (navigator.sendBeacon){
-      const ok = navigator.sendBeacon(LB_URL, new Blob([JSON.stringify(payload)], { type:'application/json' }));
+      const blob = new Blob([JSON.stringify(payload)], { type:'application/json' });
+      const ok = navigator.sendBeacon(LB_URL, blob);
       if (ok) return {ok:true, via:'beacon'};
     }
-  }catch(_){}
+  } catch(e){}
   try{
-    // no-cors mode fallback to avoid CORS failing in WebApp environments
     await fetch(LB_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     return {ok:true, via:'no-cors'};
-  }catch(e){
+  } catch(e){
     try{
       const res = await fetch(LB_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      return {ok:res.ok, status:res.status};
-    }catch(err){ return {ok:false, error:String(err)}; }
+      return {ok:res.ok};
+    } catch(err){ return {ok:false, error:String(err)}; }
   }
 }
 
@@ -781,15 +740,90 @@ async function getTopFromSheets(){
   return res.json();
 }
 
-/* ================== Start of game on load ================== */
-resizeCanvas();
-initGame();
-requestAnimationFrame(renderLoop);
+btnRestart.addEventListener('click', ()=>{ initGame(); });
+btnShare.addEventListener('click', async ()=>{ 
+  lbList.innerHTML=''; lbLoading.style.display='block'; lbModal.hidden=false;
+  try{
+    const data = await getTopFromSheets();
+    const top = (data.top || []).slice(0,10);
+    lbList.innerHTML='';
+    top.forEach((row, idx)=>{
+      const li = document.createElement('li'); li.className = 'lb-item';
+      if (idx < 5) li.classList.add('lb-top5');
+      const name = row.username || 'Игрок';
+      const score = row.score || 0;
+      li.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;"><span>#${idx+1} ${name}</span><strong>${score}</strong></div>`;
+      lbList.appendChild(li);
+    });
+  } catch(e){
+    lbList.innerHTML = '<li style="padding:8px;color:#a00">Не удалось загрузить таблицу лидеров.</li>';
+    console.warn(e);
+  } finally{
+    lbLoading.style.display='none';
+  }
+});
+lbClose.addEventListener('click', ()=>{ lbModal.hidden=true; });
 
-/* expose some debug utilities (optional) */
-window._hp = { initGame, startGame, snake, tileSize, COLS, ROWS };
+/* ================== Static draw helpers (grid debug etc) ================== */
+function drawStatic(){
+  // reserved for potential debug visuals; currently nothing required
+}
+
+/* ================== Boot sequence: preload assets -> start initGame ================== */
+async function boot(){
+  loadingOverlay.style.display = 'flex';
+  loadingText.textContent = 'Загрузка ассетов... 0%';
+  loadingProgress.style.width = '0%';
+  retryAssets.style.display = 'none';
+
+  try{
+    const imgs = await preloadAllAssets(ASSET_LIST, (loaded, total, key)=>{
+      const pct = Math.round(loaded/total*100);
+      loadingText.textContent = `Загрузка ассетов... ${pct}% (${loaded}/${total})`;
+      loadingProgress.style.width = `${pct}%`;
+    });
+
+    // map loaded images into categories & globals
+    imagesByCategory = {};
+    for (const k in categoryConfig) imagesByCategory[k] = [];
+    for (const k in imgs){
+      // static mapping
+      if (k.startsWith('balzam')) imagesByCategory['balzam'].push(imgs[k]);
+      else if (k.startsWith('Cream')) imagesByCategory['cream'].push(imgs[k]);
+      else if (k.startsWith('Shampoo')) imagesByCategory['shampoo'].push(imgs[k]);
+      else if (k.startsWith('tip')) imagesByCategory['tip'].push(imgs[k]);
+      else if (k.startsWith('hairspray')) hairsprayImages.push(imgs[k]);
+    }
+
+    headImg = imgs['golova'] || null;
+    bodyImg = imgs['telo1'] || null;
+    tailImg = imgs['telo2'] || null;
+    flowerImg = imgs['flower'] || null;
+
+    // hide loading
+    loadingOverlay.style.display = 'none';
+    // init game
+    initGame();
+  } catch(err){
+    console.error('Preload failed', err);
+    loadingText.textContent = 'Ошибка загрузки ассетов. Проверь пути и сеть.';
+    retryAssets.style.display = 'inline-block';
+    retryAssets.onclick = () => { boot(); };
+  }
+}
+
+/* ================== Expose debugging helpers ================== */
+window._hp = {
+  initGame: initGame,
+  startGame: startGame,
+  setFlowerCells(cells){ window._FLOWER_CELLS = cells; useFlowerCellsFromWindowOrDefault(); },
+  getState(){ return { tileSize, COLS, ROWS, canvasW, canvasH, gameStarted, gameOver, scoreVar }; }
+};
+
+/* ================== Start boot ================== */
+resizeCanvas();
+boot();
 
 </script>
 </body>
 </html>
-
