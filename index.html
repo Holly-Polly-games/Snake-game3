@@ -246,7 +246,7 @@ function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(rotation); ctx.globalAlpha = alpha; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fillStyle = fillStyle; ctx.fill(); ctx.restore();
 }
 function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
-  const desiredW = Math.round(areaW * 2.42);
+  const desiredW = Math.round(areaW * 2.5);
   const allowedOverflowW = Math.min(Math.round(areaW * 0.65), Math.round(tileSize * 0.9));
   const allowedOverflowH = Math.min(Math.round(areaH * 0.65), Math.round(tileSize * 0.9));
   const maxAllowedW = areaW + allowedOverflowW;
@@ -665,4 +665,5 @@ boot();
 </script>
 </body>
 </html>
+
 
