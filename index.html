@@ -11,7 +11,7 @@
   :root{
     --page-bg:#ff4da6;
     --field-bg:#E1CCFB;
-    --control-green:#2e8b57; /* цвет кнопок и полосы загрузки */
+    --control-green:#2e8b57;
     --btn-color:#fff;
   }
 
@@ -91,11 +91,17 @@
 /* ========== CONFIG ========== */
 const LB_URL = 'https://script.google.com/macros/s/AKfycbyLbK5VoMIqjIapJDp23p1vQgHttggnXEppjWBrfk4WRbteMM8SRnKlDDtKdhFvp9ae/exec';
 
-// grid
-const COLS = 12, ROWS = 22;
+// grid (reduced by 1 column and 1 row)
+const COLS = 11; // was 12
+const ROWS = 21; // was 22
+
 const BASE_STEP_MS = 120;
 const START_SPEED_MULT = 1.30;
 let stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
+
+// reserve top-left area for score: don't place fruits there
+const RESERVED_COLS = 2; // x = 0..1
+const RESERVED_ROWS = 1; // y = 0
 
 // rendering
 let tileSize = 40, canvasW = 0, canvasH = 0;
@@ -119,7 +125,7 @@ const lbLoading = document.getElementById('lbLoading');
 
 /* ========== ASSETS (lowercase filenames, in repo root) ========== */
 const categoryConfig = {
-  balzam:   { prefix:'balzam',  count:8,  points:50,  w:1, h:1, weight: 1 },
+  balzam:   { prefix:'balzam',  count:8,  points:50,  w:1, h:2, weight: 1 }, // changed to h:2
   cream:    { prefix:'cream',   count:3,  points:100, w:1, h:2, weight: 1 },
   shampoo:  { prefix:'shampoo', count:3,  points:150, w:1, h:2, weight: 1 },
   tip:      { prefix:'tip',     count:2,  points:200, w:1, h:2, weight: 0.35 }
@@ -140,7 +146,6 @@ const ASSET_BASES = (() => {
     for (let i=1;i<=cfg.count;i++) arr.push(`${cfg.prefix}${i}`);
   }
   for (let i=1;i<=hairsprayConfig.count;i++) arr.push(`${hairsprayConfig.prefix}${i}`);
-  // ensure unique
   return Array.from(new Set(arr));
 })();
 
@@ -168,7 +173,6 @@ function loadImageOnce(url, timeout=9000){
   });
 }
 async function tryLoadBase(basename, opts={timeout:9000, bust:false}){
-  // try .webp then .png
   const exts = ['.webp', '.png'];
   for (const ext of exts){
     const url = basename + ext + (opts.bust ? `?_ts=${Date.now()}` : '');
@@ -193,12 +197,10 @@ async function preloadAllAssets(onProgress){
     while (idx < total){
       const i = idx++;
       const base = ASSET_BASES[i];
-      // try twice (second with bust)
       let res = await tryLoadBase(base, { timeout:9000, bust:false });
       if (!res.ok) res = await tryLoadBase(base, { timeout:9000, bust:true });
       results[base] = res.ok ? res.img : null;
       loaded++;
-      const pct = Math.round(loaded / total * 100);
       if (onProgress) onProgress(loaded, total, base, !!res.ok);
     }
   });
@@ -433,7 +435,17 @@ function renderLoop(ts){
 /* ========== Utilities ========== */
 function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
 function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
-function rectFree(x,y,w,h){ if (x<0||y<0||x+w>COLS||y+h>ROWS) return false; for (let sx=x;sx<x+w;sx++) for (let sy=y;sy<y+h;sy++) if(pointOnSnake(sx,sy)) return false; return true; }
+function rectFree(x,y,w,h){
+  if (x<0 || y<0 || x+w>COLS || y+h>ROWS) return false;
+  // reserved area for score (don't spawn fruits overlapping it)
+  for (let sx=x; sx<x+w; sx++){
+    for (let sy=y; sy<y+h; sy++){
+      if (sx < RESERVED_COLS && sy < RESERVED_ROWS) return false;
+      if (pointOnSnake(sx,sy)) return false;
+    }
+  }
+  return true;
+}
 function lerp(a,b,t){ return a + (b-a) * t; }
 function chooseCategory(){ const keys=Object.keys(categoryConfig); const pool=[]; for(const k of keys){ const w=categoryConfig[k].weight; for(let i=0;i<Math.max(1,Math.round(w*10));i++) pool.push(k); } return pool[randInt(0,pool.length-1)]; }
 
@@ -449,7 +461,7 @@ function placeFood(){
     break;
   }
   if (!food){
-    outer: for (let yy=0; yy<ROWS; yy++) for (let xx=0; xx<COLS; xx++) if (!pointOnSnake(xx,yy)){ const imgs = imagesByCategory['balzam']||[]; food={ x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1 }; break outer; }
+    outer: for (let yy=0; yy<ROWS; yy++) for (let xx=0; xx<COLS; xx++) if (!pointOnSnake(xx,yy) && rectFree(xx,yy,1,1)){ const imgs = imagesByCategory['balzam']||[]; food={ x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:2 }; break outer; }
   }
 
   if (pendingHairspray){
@@ -495,18 +507,12 @@ function willCollide(nx, ny){
 
 /* ========== onGameOver (non-blocking, fire-and-forget) ========== */
 function onGameOver(){
-  // mark state
   gameOver = true;
   gameStarted = false;
-
-  // show controls immediately (do not wait for network)
   gameOverControls.style.display = 'flex';
   startOverlay.style.display = 'none';
-
-  // clear timers
   if (timerId){ clearTimeout(timerId); timerId = null; }
 
-  // fire-and-forget send to GAS (JSONP). We don't await it.
   try {
     const t0 = performance.now();
     submitScoreJSONP({ username: getTgUsername() || 'Игрок', score: scoreVar, tg_id: getTgId() || '' })
@@ -603,7 +609,6 @@ function warmLb(){
 /* ========== Boot: preload all assets, fill imagesByCategory, then initGame/start ========== */
 async function boot(){
   resizeCanvas();
-  // show loading overlay (already visible)
   loadingProgress.style.width = '0%';
 
   try{
@@ -618,23 +623,19 @@ async function boot(){
     for (const base in results){
       const img = results[base];
       if (!img) continue;
-      // static
       if (base === 'golova') headImg = img;
       else if (base === 'telo1') bodyImg = img;
       else if (base === 'telo2') tailImg = img;
       else if (base === 'flower') flowerImg = img;
 
-      // categories
       for (const k in categoryConfig){
         if (base.startsWith(categoryConfig[k].prefix)) imagesByCategory[k].push(img);
       }
       if (base.startsWith(hairsprayConfig.prefix)) hairsprayImages.push(img);
     }
 
-    // hide overlay and init
     loadingProgress.style.width = '100%';
 
-    // прогреваем GAS (уменьшаем шанс cold-start delay)
     warmLb();
 
     setTimeout(()=>{ loadingOverlay.style.display = 'none'; }, 200);
@@ -642,7 +643,6 @@ async function boot(){
     requestAnimationFrame(renderLoop);
   } catch(err){
     console.error('Preload failed', err);
-    // show simple retry
     loadingOverlay.style.display = 'flex';
     loadingProgress.style.width = '0%';
     alert('Ошибка загрузки ассетов. Проверь, что все файлы лежат в репозитории и имеют нижний регистр. Обнови страницу.');
@@ -665,3 +665,4 @@ boot();
 </script>
 </body>
 </html>
+
