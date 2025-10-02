@@ -493,13 +493,32 @@ function willCollide(nx, ny){
   return false;
 }
 
-async function onGameOver(){
+/* ========== onGameOver (non-blocking, fire-and-forget) ========== */
+function onGameOver(){
+  // mark state
   gameOver = true;
-  try{ await submitScoreJSONP({ username: getTgUsername() || 'Игрок', score: scoreVar, tg_id: getTgId() || '' }); } catch(e){ console.warn('submit err', e); }
+  gameStarted = false;
+
+  // show controls immediately (do not wait for network)
   gameOverControls.style.display = 'flex';
   startOverlay.style.display = 'none';
-  gameStarted = false;
-  if (timerId) clearTimeout(timerId);
+
+  // clear timers
+  if (timerId){ clearTimeout(timerId); timerId = null; }
+
+  // fire-and-forget send to GAS (JSONP). We don't await it.
+  try {
+    const t0 = performance.now();
+    submitScoreJSONP({ username: getTgUsername() || 'Игрок', score: scoreVar, tg_id: getTgId() || '' })
+      .then(res => {
+        console.log('submitScoreJSONP OK', res, 'ms=', Math.round(performance.now()-t0));
+      })
+      .catch(err => {
+        console.warn('submitScoreJSONP ERR', err, 'ms=', Math.round(performance.now()-t0));
+      });
+  } catch(e){
+    console.warn('onGameOver send failed sync', e);
+  }
 }
 
 function performStep(){
@@ -567,6 +586,20 @@ function fetchLeaderboardJSONP(){
   });
 }
 
+/* ========== warmLb(): прогрев GAS (уменьшает cold start) ========== */
+function warmLb(){
+  try {
+    const s = document.createElement('script');
+    s.src = LB_URL + '?_warm=1';
+    s.async = true;
+    s.onload = () => { s.remove(); };
+    s.onerror = () => { s.remove(); };
+    document.body.appendChild(s);
+  } catch(e){
+    console.warn('warmLb failed', e);
+  }
+}
+
 /* ========== Boot: preload all assets, fill imagesByCategory, then initGame/start ========== */
 async function boot(){
   resizeCanvas();
@@ -600,6 +633,10 @@ async function boot(){
 
     // hide overlay and init
     loadingProgress.style.width = '100%';
+
+    // прогреваем GAS (уменьшаем шанс cold-start delay)
+    warmLb();
+
     setTimeout(()=>{ loadingOverlay.style.display = 'none'; }, 200);
     initGame(true);
     requestAnimationFrame(renderLoop);
@@ -628,5 +665,3 @@ boot();
 </script>
 </body>
 </html>
-
-
