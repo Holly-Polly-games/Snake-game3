@@ -4,7 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>Holly Polly — Змейка</title>
+
+<!-- Telegram WebApp SDK (оставляем) -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
 <style>
   :root{
     --page-bg: #ff4da6;
@@ -12,26 +15,63 @@
     --control-green: #2e8b57;
     --btn-color: #fff;
   }
-  html,body{height:100dvh;margin:0;background:var(--page-bg);-webkit-text-size-adjust:100%;-webkit-touch-callout:none;font-family:"Futura","Trebuchet MS",Arial,sans-serif;overflow:hidden;}
-  body{ display:flex; flex-direction:column; align-items:center; padding:12px; box-sizing:border-box; overscroll-behavior:contain; touch-action:none; }
+
+  html,body{
+    height:100dvh;
+    margin:0;
+    background:var(--page-bg);
+    -webkit-text-size-adjust:100%;
+    -webkit-touch-callout:none;
+    font-family:"Futura","Trebuchet MS",Arial,sans-serif;
+    overflow:hidden; /* блокируем скролл страницы */
+  }
+  body{
+    display:flex; flex-direction:column; align-items:center;
+    padding:12px; box-sizing:border-box;
+    overscroll-behavior:none;
+    touch-action:none;
+  }
+
   header{ text-align:center; margin-bottom:8px; user-select:none; color:#000; width:100% }
   header img{ max-height:84px; display:block; margin:0 auto; }
   header .slogan{ color:#000; margin-top:8px; font-weight:700; }
-  #container{ background:var(--field-bg); border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.25); position:relative; touch-action:none; }
-  canvas{ display:block; image-rendering:optimizeQuality; touch-action:none; background:transparent; border-radius:12px; -webkit-user-select:none; user-select:none; }
-  /* START overlay (tap to start) */
-  #startOverlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:60; pointer-events:auto; }
-  #startOverlay .msg{ padding:14px 18px; background:rgba(0,0,0,0.32); color:#fff; border-radius:12px; font-size:18px; text-align:center; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-  /* Game Over buttons — centered, stacked like старые версии */
-  #gameOverButtons{
-    position:absolute;
-    left:50%;
-    top:50%;
+
+  #container{
+    background:var(--field-bg);
+    border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.25);
+    position:relative;
+    touch-action:none;
+  }
+
+  canvas{
+    display:block;
+    image-rendering: optimizeQuality;
+    touch-action:none;
+    background:transparent;
+    border-radius:12px;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+
+  /* стартовый overlay: показываем только при первом запуске */
+  .overlay-start{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:60;
+    pointer-events:auto;
+  }
+  .overlay-start .msg{
+    padding:14px 18px; background:rgba(0,0,0,0.32); color:#fff; border-radius:12px;
+    font-size:18px; text-align:center; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+
+  /* Кнопки Game Over — центрированные, как в старых версиях */
+  .gameover-controls{
+    position:absolute; left:50%; top:50%;
     transform:translate(-50%,-50%);
     z-index:70;
     display:none;
     flex-direction:column;
-    gap:18px;
+    gap:14px;
     align-items:center;
     pointer-events:auto;
   }
@@ -41,11 +81,12 @@
     border:none;
     padding:14px 28px;
     border-radius:12px;
-    font-size:20px;
+    font-size:18px;
     cursor:pointer;
     box-shadow:0 6px 12px rgba(0,0,0,0.18);
   }
-  /* Leaderboard modal */
+
+  /* Лидерборд modal */
   .lb-modal{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:120; }
   .lb-modal[hidden]{ display:none; }
   .lb-card{ background:#fff; border-radius:14px; width:min(540px,94vw); box-shadow:0 10px 40px rgba(0,0,0,.35); padding:12px 14px; max-height:70vh; overflow:auto; }
@@ -55,31 +96,37 @@
   .lb-list{ margin:8px 0 0; padding:0 10px 8px; list-style:none; }
   .lb-item{ padding:8px; border-radius:8px; display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; }
   .lb-top5{ background:#fff8d6; }
-  /* Loading overlay */
-  #loadingOverlay{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:9999; background:rgba(0,0,0,0.5); color:#fff; font-size:16px; gap:12px; flex-direction:column; }
+
+  /* Загрузка ассетов overlay */
+  #loadingOverlay{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:9999;
+    background:rgba(0,0,0,0.5); color:#fff; font-size:16px; gap:12px; flex-direction:column;
+  }
   #loadingBar{ width:64%; max-width:420px; height:12px; background:rgba(255,255,255,0.15); border-radius:8px; overflow:hidden; }
   #loadingProgress{ height:100%; width:0%; background:linear-gradient(90deg,#fff 0,#ffd 60%); transition:width .18s ease; }
+
   @media (max-width:480px){
-    .go-btn{ font-size:18px; padding:12px 22px; }
+    .go-btn{ font-size:16px; padding:12px 22px; }
   }
 </style>
 </head>
 <body>
   <header>
+    <!-- logo.png остаётся png -->
     <img src="logo.png" alt="logo" decoding="async">
     <div class="slogan">Holly Polly — твоя лучшая подруга!</div>
   </header>
 
   <div id="container" role="application" aria-label="Игра Змейка">
-    <canvas id="game"></canvas>
+    <canvas id="game" aria-hidden="false"></canvas>
 
-    <!-- tap to start overlay -->
-    <div id="startOverlay" aria-hidden="false">
-      <div class="msg" id="startMsg">Загрузка...</div>
+    <!-- стартовая подсказка: показывается только при первом запуске -->
+    <div id="startOverlay" class="overlay-start" aria-hidden="true" style="display:none;">
+      <div id="startMsg" class="msg">Тапни, чтобы начать</div>
     </div>
 
-    <!-- centered Game Over buttons (Заново + Таблица лидеров) -->
-    <div id="gameOverButtons">
+    <!-- Центрированные кнопки Game Over -->
+    <div id="gameOverControls" class="gameover-controls">
       <button id="btnRestart" class="go-btn">Заново</button>
       <button id="btnShare" class="go-btn">Таблица лидеров</button>
     </div>
@@ -97,22 +144,20 @@
     </div>
   </div>
 
-  <!-- Loading overlay (preload) -->
+  <!-- Loading preloader -->
   <div id="loadingOverlay">
     <div id="loadingText">Загрузка ассетов... 0%</div>
     <div id="loadingBar"><div id="loadingProgress"></div></div>
-    <div>
-      <button id="retryAssets" style="display:none;padding:8px 12px;border-radius:8px;">Повторить</button>
-    </div>
+    <div><button id="retryAssets" style="display:none;padding:8px 12px;border-radius:8px;">Повторить</button></div>
   </div>
 
 <script>
-/* ---------------- CONFIG ---------------- */
+/* =================== КОНФИГ =================== */
 const LB_URL = 'https://script.google.com/macros/s/AKfycbwWwEFARyVpWEqLUcQ5FCAUUy6EDf8xXxVdC1FuyaYfGkySRK6e7Ryq_nM2X2RWn3YZ/exec';
 
 const COLS = 12, ROWS = 22;
 const BASE_STEP_MS = 120;
-const START_SPEED_MULT = 1.30;
+const START_SPEED_MULT = 1.30; // стартовая задержка (умножитель)
 let stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
 
 const RENDER_SCALE = 1.2;
@@ -134,13 +179,15 @@ const SPEED_MULT_COMBINED = SPEED_MULT_BASE - EXTRA_STEP_PCT;
 const MIN_STEP = 25;
 const SMOOTH_LERP = 0.14;
 
-/* ---------------- DOM ---------------- */
+/* =================== DOM =================== */
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha:true });
 const container = document.getElementById('container');
+
 const startOverlay = document.getElementById('startOverlay');
 const startMsg = document.getElementById('startMsg');
-const gameOverButtons = document.getElementById('gameOverButtons');
+
+const gameOverControls = document.getElementById('gameOverControls');
 const btnRestart = document.getElementById('btnRestart');
 const btnShare = document.getElementById('btnShare');
 
@@ -154,7 +201,10 @@ const lbList = document.getElementById('lbList');
 const lbClose = document.getElementById('lbClose');
 const lbLoading = document.getElementById('lbLoading');
 
-/* ---------------- Assets list ---------------- */
+/* =================== ASSET LIST (root, .webp) =================== */
+/* Все картинки теперь лежат в корне (без папки assets) и в формате webp.
+   Только logo.png остаётся png и лежит в корне.
+*/
 const categoryConfig = {
   balzam:   {prefix:'balzam',    count:8,  points:50,  w:1, h:1, weight: 1},
   cream:    {prefix:'Cream',     count:3,  points:100, w:1, h:2, weight: 1},
@@ -164,31 +214,48 @@ const categoryConfig = {
 const hairsprayConfig = { prefix:'HairSpray', count:3, points:300, w:1, h:2 };
 
 const STATIC_ASSETS = [
-  {key:'golova', url:'golova.png'},
-  {key:'telo1', url:'telo1.png'},
-  {key:'telo2', url:'telo2.png'},
-  {key:'flower', url:'flower.png'}
+  {key:'golova', url:'golova.webp'},
+  {key:'telo1', url:'telo1.webp'},
+  {key:'telo2', url:'telo2.webp'},
+  {key:'flower', url:'flower.webp'}
 ];
+
 const ASSET_LIST = STATIC_ASSETS.slice();
 for (const k in categoryConfig){
   const cfg = categoryConfig[k];
-  for (let i=1;i<=cfg.count;i++) ASSET_LIST.push({ key: `${k}${i}`, url: `assets/${cfg.prefix}${i}.png` });
+  for (let i=1;i<=cfg.count;i++){
+    ASSET_LIST.push({ key: `${k}${i}`, url: `${cfg.prefix}${i}.webp` });
+  }
 }
-for (let i=1;i<=hairsprayConfig.count;i++) ASSET_LIST.push({ key: `hairspray${i}`, url: `assets/${hairsprayConfig.prefix}${i}.png` });
+for (let i=1;i<=hairsprayConfig.count;i++){
+  ASSET_LIST.push({ key: `hairspray${i}`, url: `${hairsprayConfig.prefix}${i}.webp` });
+}
 
-/* ---------------- State ---------------- */
+/* =================== STATE =================== */
 let imagesByCategory = {};
 let hairsprayImages = [];
-let headImg=null, bodyImg=null, tailImg=null, flowerImg=null;
-let tileSize=40, canvasW=0, canvasH=0;
-let snake=[], dx=1, dy=0;
-let food=null, extraFood=null, particles=[];
-let gameOver=false, timerId=null;
-let eatenSinceSpeedup=0, totalEaten=0, scoreVar=0, globalTime=0;
-let pendingHairspray=false;
-let gameStarted=false;
+let headImg = null, bodyImg = null, tailImg = null, flowerImg = null;
 
-/* ---------------- Preload helpers ---------------- */
+let tileSize = 40, canvasW = 0, canvasH = 0;
+
+let snake = [];
+let dx = 1, dy = 0;
+let food = null;
+let extraFood = null;
+let particles = [];
+
+let gameOver = false;
+let timerId = null;
+let eatenSinceSpeedup = 0;
+let totalEaten = 0;
+let scoreVar = 0;
+let globalTime = 0;
+let pendingHairspray = false;
+
+let firstBoot = true; // если true — показываем стартовую подсказку; после первого старта — false
+let gameStarted = false;
+
+/* =================== PRELOAD helpers =================== */
 function loadImageWithTimeout(url, timeoutMs = 9000, tries = 2){
   return new Promise(async (resolve, reject) => {
     for (let attempt=1; attempt<=tries; attempt++){
@@ -196,7 +263,11 @@ function loadImageWithTimeout(url, timeoutMs = 9000, tries = 2){
         const img = new Image();
         img.decoding = 'async';
         img.loading = 'eager';
-        const p = new Promise((res, rej) => { img.onload = () => res(img); img.onerror = () => rej(new Error('load error ' + url)); });
+        // img.crossOrigin = 'anonymous'; // если нужен CORS
+        const p = new Promise((res, rej) => {
+          img.onload = () => res(img);
+          img.onerror = (e) => rej(new Error('load error ' + url));
+        });
         img.src = url;
         if (img.decode){
           await Promise.race([ img.decode(), new Promise((_, r)=>setTimeout(()=>r(new Error('decode timeout')), timeoutMs)) ]);
@@ -214,34 +285,58 @@ function loadImageWithTimeout(url, timeoutMs = 9000, tries = 2){
   });
 }
 
-async function preloadAllAssets(list, onProgress){
-  const images = {};
-  let loaded = 0;
-  for (const item of list){
+async function preloadCriticalAssets(list, onProgress){
+  const out = {};
+  let n = 0;
+  for (const it of list){
     try{
-      const img = await loadImageWithTimeout(item.url, 9000, 2);
-      images[item.key] = img;
-      loaded++;
-      if (onProgress) onProgress(loaded, list.length, item.key, item.url);
+      const img = await loadImageWithTimeout(it.url, 8000, 2);
+      out[it.key] = img;
     } catch(err){
-      throw new Error('Failed to load ' + item.url + ' — ' + err.message);
+      console.warn('Critical asset failed', it.url, err);
+      out[it.key] = null;
     }
+    n++;
+    if (onProgress) onProgress(n, list.length, it.key, it.url);
   }
-  return images;
+  return out;
 }
 
-/* ---------------- Flowers setup (50% fewer) ---------------- */
+async function backgroundLoadAssets(list, onProgress){
+  const results = {};
+  let loaded = 0;
+  const CONCURRENCY = 6;
+  let idx = 0;
+  const workers = new Array(CONCURRENCY).fill(0).map(async () => {
+    while (idx < list.length){
+      const i = idx++;
+      const it = list[i];
+      try{
+        const img = await loadImageWithTimeout(it.url, 9000, 2);
+        results[it.key] = img;
+      } catch(e){
+        console.warn('Background fail', it.url, e);
+        results[it.key] = null;
+      }
+      loaded++;
+      if (onProgress) onProgress(loaded, list.length, it.key, it.url);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/* =================== Flowers cells (less, unique) =================== */
 let flowerCells = null;
 function generateDefaultFlowerCells(){
-  const totalCells = COLS * ROWS;
-  const desired = Math.max(1, Math.round(totalCells * 0.125)); // ~12.5% (previously ~25% -> now 50% less)
+  const total = COLS*ROWS;
+  const desired = Math.max(1, Math.round(total * 0.125)); // ~12.5% (50% less than ~25%)
   const set = new Set();
-  let i = 0;
-  while(set.size < desired && i < totalCells * 8){
-    // simple pseudo random but deterministic-ish
+  let i=0;
+  while(set.size < desired && i < total * 8){
     const rx = Math.floor(((Math.sin(i*777 + 13) + 1) / 2) * COLS);
     const ry = Math.floor(((Math.cos(i*131 + 7) + 1) / 2) * ROWS);
-    set.add(`${Math.max(0, Math.min(COLS-1, rx))},${Math.max(0, Math.min(ROWS-1, ry))}`);
+    set.add(`${Math.max(0,Math.min(COLS-1,rx))},${Math.max(0,Math.min(ROWS-1,ry))}`);
     i++;
   }
   return Array.from(set).map(s => s.split(',').map(Number));
@@ -249,15 +344,17 @@ function generateDefaultFlowerCells(){
 function useFlowerCellsFromWindowOrDefault(){
   if (Array.isArray(window._FLOWER_CELLS) && window._FLOWER_CELLS.length){
     const uniq = new Set();
-    flowerCells = window._FLOWER_CELLS.map(c => [Number(c[0]), Number(c[1])]).filter(c => c[0]>=0 && c[0]<COLS && c[1]>=0 && c[1]<ROWS).filter(c=>{
-      const k = `${c[0]},${c[1]}`; if (uniq.has(k)) return false; uniq.add(k); return true;
+    flowerCells = window._FLOWER_CELLS.map(c=>[Number(c[0]), Number(c[1])]).filter(c=>c[0]>=0&&c[0]<COLS&&c[1]>=0&&c[1]<ROWS).filter(c=>{
+      const k = `${c[0]},${c[1]}`;
+      if (uniq.has(k)) return false;
+      uniq.add(k); return true;
     });
   } else {
     flowerCells = generateDefaultFlowerCells();
   }
 }
 
-/* ---------------- Layout & canvas ---------------- */
+/* =================== Layout / canvas =================== */
 function fitLayout(){
   const vw = window.innerWidth;
   const vh = Math.min(window.visualViewport?.height || window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
@@ -278,21 +375,27 @@ function resizeCanvas(){
   canvas.style.height = cssH + 'px';
   container.style.width = cssW + 'px';
   container.style.height = cssH + 'px';
+
   const device = Math.max(1, window.devicePixelRatio || 1);
   DPR = Math.min(1.6, device * RENDER_SCALE);
+
   canvas.width = Math.round(cssW * DPR);
   canvas.height = Math.round(cssH * DPR);
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.imageSmoothingEnabled = true;
+
   canvasW = cssW;
   canvasH = cssH;
 }
 window.addEventListener('resize', ()=>{ resizeCanvas(); });
 window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ resizeCanvas(); }, 120); });
 
-/* ---------------- Drawing helpers ---------------- */
+/* блокируем скролл мобильных свайпов по умолчанию (но управление свайпами внутри canvas остается) */
+window.addEventListener('touchmove', function(e){ e.preventDefault(); }, { passive:false });
+
+/* =================== Drawing helpers =================== */
 function drawEllipseFilled(cx, cy, rx, ry, fillStyle, alpha=1, rotation=0){
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rotation); ctx.globalAlpha = alpha; ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI*2); ctx.fillStyle = fillStyle; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rotation); ctx.globalAlpha = alpha; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fillStyle = fillStyle; ctx.fill(); ctx.restore();
 }
 function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
   const desiredW = Math.round(areaW * FOOD_SCALE);
@@ -306,13 +409,13 @@ function computeImageDrawRect(areaLeft, areaTop, areaW, areaH){
   return { drawW, drawH, areaLeft, areaTop, areaW, areaH, maxAllowedW, maxAllowedH };
 }
 
-/* ---------------- Draw flowers only in specified cells (smaller size) ---------------- */
+/* =================== Flowers drawing (small & deduped) =================== */
 function drawFlowers(){
   if (!flowerImg || !flowerImg.complete || !flowerImg.naturalWidth) return;
   if (!Array.isArray(flowerCells) || !flowerCells.length) return;
   ctx.save();
-  ctx.globalAlpha = 0.88;
-  const size = Math.max(6, Math.floor(tileSize * 0.6)); // reduced size -> prevents overlap
+  ctx.globalAlpha = 0.9;
+  const size = Math.max(6, Math.floor(tileSize * 0.6)); // уменьшено для предотвращения наложений
   for (const [cxCell, cyCell] of flowerCells){
     const cx = (cxCell + 0.5) * tileSize;
     const cy = (cyCell + 0.5) * tileSize;
@@ -321,7 +424,7 @@ function drawFlowers(){
   ctx.restore();
 }
 
-/* ---------------- Food drawing ---------------- */
+/* =================== Food drawing (hairspray vertical oval) =================== */
 function drawSingleFood(it, nowSec){
   if (!it) return;
   const cellsW = it.w, cellsH = it.h;
@@ -329,6 +432,7 @@ function drawSingleFood(it, nowSec){
   const areaH = tileSize * cellsH;
   const areaLeft = it.x * tileSize;
   const areaTop  = it.y * tileSize;
+
   if (it.cat === 'hairspray'){
     const pulse = 1 + 0.24 * Math.sin(nowSec * 4 + it.x * 1.7 + it.y * 0.9);
     const cx = Math.round(areaLeft + areaW/2);
@@ -338,13 +442,17 @@ function drawSingleFood(it, nowSec){
     const rx = Math.max(7, Math.round((base/3.2 + 6) * pulse));
     drawEllipseFilled(cx, cy, rx, ry, 'rgba(255,235,0,0.98)', 0.98);
   }
+
   if (it.img && it.img.complete && it.img.naturalWidth && it.img.naturalHeight){
     const c = computeImageDrawRect(areaLeft, areaTop, areaW, areaH);
     const iw = it.img.naturalWidth, ih = it.img.naturalHeight;
     const aspect = iw / ih;
     let drawW = c.drawW;
     let drawH = Math.round(drawW / aspect);
-    if (drawH > c.maxAllowedH){ drawH = c.maxAllowedH; drawW = Math.round(drawH * aspect); }
+    if (drawH > c.maxAllowedH){
+      drawH = c.maxAllowedH;
+      drawW = Math.round(drawH * aspect);
+    }
     const drawX = Math.round(areaLeft + (areaW - drawW)/2);
     const drawY = Math.round(areaTop + (areaH - drawH)/2);
     ctx.drawImage(it.img, drawX, drawY, drawW, drawH);
@@ -360,15 +468,16 @@ function drawSingleFood(it, nowSec){
 }
 function drawFood(nowSec){ drawSingleFood(food, nowSec); if (extraFood) drawSingleFood(extraFood, nowSec); }
 
-/* ---------------- Snake drawing ---------------- */
+/* =================== Snake drawing (rotated body parts) =================== */
 function drawSnake(){
   for (let i=0;i<snake.length;i++){
-    const s = snake[i];
+    const s=snake[i];
     const targetCx = s.x * tileSize + tileSize/2;
     const targetCy = s.y * tileSize + tileSize/2;
     s.px = lerp(s.px, targetCx, SMOOTH_LERP);
     s.py = lerp(s.py, targetCy, SMOOTH_LERP);
   }
+
   for (let i=1;i<snake.length;i++){
     const s = snake[i];
     const size = Math.max(6, Math.floor(tileSize * 1.06));
@@ -393,6 +502,7 @@ function drawSnake(){
       } else { ctx.fillStyle = '#E159A9'; ctx.beginPath(); ctx.arc(s.px, s.py, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2); ctx.fill(); }
     }
   }
+
   const head = snake[0];
   const hx = head.px, hy = head.py;
   const headScale = 1.42;
@@ -406,13 +516,13 @@ function drawSnake(){
   } else {
     ctx.fillStyle = '#E159A9'; ctx.beginPath(); ctx.arc(hx, hy, Math.max(4, Math.floor(tileSize/2 - 2)), 0, Math.PI*2); ctx.fill();
     const eyeR = Math.max(2, Math.floor(tileSize/6));
-    const eyeOffsetX = tileSize / 4, eyeOffsetY = tileSize / 6;
+    const eyeOffsetX = tileSize / 4; const eyeOffsetY = tileSize / 6;
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2); ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, eyeR, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(hx - eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2); ctx.arc(hx + eyeOffsetX, hy - eyeOffsetY, Math.max(1, Math.floor(eyeR/2)), 0, Math.PI*2); ctx.fill();
   }
 }
 
-/* ---------------- Particles ---------------- */
+/* =================== Particles =================== */
 function spawnParticlesAt(cellX, cellY, cellsW, cellsH, cat){
   const cx = (cellX + cellsW/2) * tileSize;
   const cy = (cellY + cellsH/2) * tileSize;
@@ -461,7 +571,7 @@ function drawParticles(){
   ctx.restore();
 }
 
-/* ---------------- Score draw ---------------- */
+/* =================== Score =================== */
 function drawScore(){
   ctx.save();
   ctx.fillStyle = '#000';
@@ -471,7 +581,7 @@ function drawScore(){
   ctx.restore();
 }
 
-/* ---------------- Render loop ---------------- */
+/* =================== Render loop =================== */
 function renderLoop(ts){
   globalTime = ts / 1000;
   if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
@@ -485,14 +595,14 @@ function renderLoop(ts){
   requestAnimationFrame(renderLoop);
 }
 
-/* ---------------- Utils ---------------- */
+/* =================== Utils =================== */
 function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
 function pointOnSnake(x,y){ return snake.some(s => s.x===x && s.y===y); }
 function rectFree(x,y,w,h){ if (x<0||y<0||x+w>COLS||y+h>ROWS) return false; for (let sx=x;sx<x+w;sx++) for (let sy=y;sy<y+h;sy++) if(pointOnSnake(sx,sy)) return false; return true; }
 function lerp(a,b,t){ return a + (b-a) * t; }
 function chooseCategory(){ const keys=Object.keys(categoryConfig); const pool=[]; for(const k of keys){ const w = categoryConfig[k].weight; const times=Math.max(1,Math.round(w*10)); for(let i=0;i<times;i++) pool.push(k); } return pool[randInt(0,pool.length-1)]; }
 
-/* ---------------- Food placement ---------------- */
+/* =================== Food placement =================== */
 function placeFood(){
   const maxAttempts = 1000; let attempts=0; food=null;
   while(attempts++ < maxAttempts){
@@ -506,11 +616,13 @@ function placeFood(){
   if (!food){
     outer: for (let yy=0; yy<ROWS; yy++) for (let xx=0; xx<COLS; xx++) if (!pointOnSnake(xx,yy)){ const imgs = imagesByCategory['balzam']||[]; food={ x:xx,y:yy,cat:'balzam',img:imgs[0]||null,points:50,w:1,h:1 }; break outer; }
   }
+
   if (pendingHairspray){
     const wH = hairsprayConfig.w, hH = hairsprayConfig.h; let placed=false, attempts2=0;
     while(attempts2++<800 && !placed){
       const x = randInt(0, COLS-wH); const y = randInt(0, ROWS-hH);
       if (!rectFree(x,y,wH,hH)) continue;
+      // ensure not overlapping main food
       if (!(x + wH <= food.x || x >= food.x + food.w || y + hH <= food.y || y >= food.y + food.h)) continue;
       const img = hairsprayImages.length ? hairsprayImages[randInt(0, hairsprayImages.length-1)] : null;
       extraFood = { x, y, cat:'hairspray', img, points: hairsprayConfig.points, w: wH, h: hH, expiresAt: performance.now() + 3000 };
@@ -520,29 +632,41 @@ function placeFood(){
   }
 }
 
-/* ---------------- Segments ---------------- */
+/* =================== Segments helper =================== */
 function createSegment(x,y){ return { x, y, px: x*tileSize + tileSize/2, py: y*tileSize + tileSize/2 }; }
 
-/* ---------------- Init / restart ---------------- */
-function initGame(){
+/* =================== Init / Restart =================== */
+function initGame(showStartOverlay = true){
   resizeCanvas();
   useFlowerCellsFromWindowOrDefault();
+
   const cx = Math.floor(COLS/2), cy = Math.floor(ROWS/2);
   snake = [ createSegment(cx,cy), createSegment(cx-1,cy), createSegment(cx-2,cy) ];
-  dx=1; dy=0; stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
-  food=null; extraFood=null; pendingHairspray=false; particles=[]; gameOver=false;
-  eatenSinceSpeedup=0; totalEaten=0; scoreVar=0;
+  dx = 1; dy = 0;
+  stepDelay = Math.round(BASE_STEP_MS * START_SPEED_MULT);
+  food = null; extraFood = null; pendingHairspray = false; particles = [];
+  gameOver = false; eatenSinceSpeedup = 0; totalEaten = 0; scoreVar = 0;
   placeFood();
-  gameOverButtons.style.display = 'none';
-  startOverlay.style.display = 'flex';
-  startOverlay.setAttribute('aria-hidden','false');
-  startMsg.textContent = 'Тапни, чтобы начать';
+
+  // подсказка "тапни чтобы начать" — показываем только если первый запуск и showStartOverlay=true
+  if (firstBoot && showStartOverlay){
+    startOverlay.style.display = 'flex';
+    startOverlay.setAttribute('aria-hidden','false');
+  } else {
+    startOverlay.style.display = 'none';
+    startOverlay.setAttribute('aria-hidden','true');
+  }
+
+  gameOverControls.style.display = 'none';
   gameStarted = false;
-  if (timerId){ clearTimeout(timerId); timerId=null; }
+
+  if (timerId){ clearTimeout(timerId); timerId = null; }
+
+  // запустить рендер
   requestAnimationFrame(renderLoop);
 }
 
-/* ---------------- Step logic ---------------- */
+/* =================== Step logic (исправленная логика роста) =================== */
 function willCollide(nx, ny){
   if (nx<0 || ny<0 || nx>=COLS || ny>=ROWS) return true;
   for (let i=1;i<snake.length;i++) if (snake[i].x===nx && snake[i].y===ny) return true;
@@ -551,40 +675,87 @@ function willCollide(nx, ny){
 
 async function onGameOver(){
   gameOver = true;
+  // отправка результата на GAS (fire-and-forget)
   try{ await sendScoreToSheets({ username: getTgUsername()||'Игрок', score: scoreVar, tg_id: getTgId()||'' }); } catch(e){ console.warn('sendScore err', e); }
-  // show centered GO buttons and hide start overlay
-  gameOverButtons.style.display = 'flex';
+
+  // show Game Over buttons (center)
+  gameOverControls.style.display = 'flex';
   startOverlay.style.display = 'none';
   startOverlay.setAttribute('aria-hidden','true');
   gameStarted = false;
+
   if (timerId){ clearTimeout(timerId); timerId = null; }
 }
 
 function performStep(){
   if (gameOver || !gameStarted) return;
-  const headGX = snake[0].x + dx, headGY = snake[0].y + dy;
-  if (willCollide(headGX, headGY)){ onGameOver(); return; }
+
+  const headGX = snake[0].x + dx;
+  const headGY = snake[0].y + dy;
+
+  if (willCollide(headGX, headGY)){
+    onGameOver();
+    return;
+  }
+
+  // add new head
   snake.unshift(createSegment(headGX, headGY));
-  let ateExtra = false;
+
+  // check extraFood first
+  let ateAny = false;
   if (extraFood){
-    if (headGX >= extraFood.x && headGX < extraFood.x + extraFood.w && headGY >= extraFood.y && headGY < extraFood.y + extraFood.h){
-      scoreVar += extraFood.points; totalEaten++; eatenSinceSpeedup++; spawnParticlesAt(extraFood.x, extraFood.y, extraFood.w, extraFood.h, 'hairspray'); extraFood = null; ateExtra = true;
+    if (headGX >= extraFood.x && headGX < extraFood.x + extraFood.w &&
+        headGY >= extraFood.y && headGY < extraFood.y + extraFood.h){
+      scoreVar += extraFood.points;
+      totalEaten++;
+      eatenSinceSpeedup++;
+      spawnParticlesAt(extraFood.x, extraFood.y, extraFood.w, extraFood.h, 'hairspray');
+      extraFood = null;
+      ateAny = true;
     }
   }
-  if (food && !ateExtra){
-    if (headGX >= food.x && headGX < food.x + food.w && headGY >= food.y && headGY < food.y + food.h){
-      totalEaten++; eatenSinceSpeedup++; scoreVar += food.points; spawnParticlesAt(food.x, food.y, food.w, food.h, food.cat); pendingHairspray=(Math.random()<0.10); placeFood();
+
+  // check main food
+  if (!ateAny && food){
+    if (headGX >= food.x && headGX < food.x + food.w &&
+        headGY >= food.y && headGY < food.y + food.h){
+      scoreVar += food.points;
+      totalEaten++;
+      eatenSinceSpeedup++;
+      spawnParticlesAt(food.x, food.y, food.w, food.h, food.cat);
+      pendingHairspray = (Math.random() < 0.10);
+      placeFood();
+      ateAny = true;
     }
   }
-  if (!ateExtra && !(food && headGX >= food.x && headGX < food.x + food.w && headGY >= food.y && headGY < food.y + food.h)) snake.pop();
-  if (eatenSinceSpeedup >= 3){ stepDelay = Math.max(MIN_STEP, Math.round(stepDelay * SPEED_MULT_COMBINED)); eatenSinceSpeedup = 0; }
+
+  // if didn't eat anything — remove tail (normal move)
+  if (!ateAny){
+    snake.pop();
+  } else {
+    // ate -> snake grew by 1 (we did unshift and did not pop)
+  }
+
+  // speedup logic: every 3 eaten -> faster
+  if (eatenSinceSpeedup >= 3){
+    stepDelay = Math.max(MIN_STEP, Math.round(stepDelay * SPEED_MULT_COMBINED));
+    eatenSinceSpeedup = 0;
+  }
+
+  // expire extraFood
   if (extraFood && performance.now() > extraFood.expiresAt) extraFood = null;
+
   scheduleNextStep();
 }
-function scheduleNextStep(){ if (timerId) clearTimeout(timerId); timerId = setTimeout(performStep, stepDelay); }
 
-/* ---------------- Input: keyboard + touch + start by tap ---------------- */
+function scheduleNextStep(){
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(performStep, stepDelay);
+}
+
+/* =================== Input: keyboard + touch + start =================== */
 function setDir(nx, ny){ if (nx === -dx && ny === -dy) return; dx = nx; dy = ny; }
+
 window.addEventListener('keydown', e=>{
   if (e.key === 'ArrowUp') setDir(0,-1);
   else if (e.key === 'ArrowDown') setDir(0,1);
@@ -593,42 +764,80 @@ window.addEventListener('keydown', e=>{
 });
 
 let tsx=0, tsy=0, swiping=false;
-canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; tsx=t.clientX; tsy=t.clientY; swiping=true; if (!gameStarted && !gameOver){ startGame(); } }, {passive:true});
-canvas.addEventListener('touchmove', e=>{ if (!swiping) return; const t=e.touches[0]; const dxs=t.clientX-tsx, dys=t.clientY-tsy; const TH=Math.max(20, tileSize*0.2); if (Math.abs(dxs)<TH && Math.abs(dys)<TH) return; if (Math.abs(dxs)>Math.abs(dys)){ if (dxs>0) setDir(1,0); else setDir(-1,0); } else { if (dys>0) setDir(0,1); else setDir(0,-1); } swiping=false; }, {passive:true});
-canvas.addEventListener('touchend', e=>{ swiping=false; }, {passive:true});
+canvas.addEventListener('touchstart', e=>{
+  const t = e.touches[0]; tsx = t.clientX; tsy = t.clientY; swiping = true;
+  // если игра ещё не стартовала и это не перезапуск, стартуем
+  if (!gameStarted && !gameOver && !startOverlay.style.display) startGame(); // safety
+}, { passive:true });
 
-startOverlay.addEventListener('pointerdown', (e)=>{ e.preventDefault(); if (!gameStarted) startGame(); });
-canvas.addEventListener('pointerdown', (e)=>{ if (!gameStarted && !gameOver){ startGame(); } });
+canvas.addEventListener('touchmove', e=>{
+  if (!swiping) return;
+  const t = e.touches[0];
+  const dxs = t.clientX - tsx, dys = t.clientY - tsy;
+  const TH = Math.max(18, tileSize * 0.18);
+  if (Math.abs(dxs) < TH && Math.abs(dys) < TH) return;
+  if (Math.abs(dxs) > Math.abs(dys)){ if (dxs > 0) setDir(1,0); else setDir(-1,0); }
+  else { if (dys > 0) setDir(0,1); else setDir(0,-1); }
+  swiping = false;
+}, { passive:true });
+
+canvas.addEventListener('touchend', e=>{ swiping = false; }, { passive:true });
+
+// start overlay pointer: only active on first boot
+startOverlay.addEventListener('pointerdown', (e)=>{
+  e.preventDefault();
+  if (!gameStarted && !gameOver && firstBoot){
+    startGame();
+    firstBoot = false; // больше не показываем подсказку
+  }
+});
+
+// pointer on canvas also starts if firstBoot
+canvas.addEventListener('pointerdown', (e)=>{
+  if (!gameStarted && !gameOver && firstBoot){
+    startGame();
+    firstBoot = false;
+  }
+});
 
 function startGame(){
   if (gameStarted) return;
   gameStarted = true; gameOver = false;
   startOverlay.style.display = 'none';
   startOverlay.setAttribute('aria-hidden','true');
-  gameOverButtons.style.display = 'none';
+  gameOverControls.style.display = 'none';
   if (timerId) clearTimeout(timerId);
   timerId = setTimeout(performStep, stepDelay);
   requestAnimationFrame(renderLoop);
 }
 
-/* ---------------- Leaderboard / GAS ---------------- */
-async function sendScoreToSheets({username, score, tg_id}){
+/* =================== Restart button behavior =================== */
+/* После нажатия "Заново" подсказка больше не показывается */
+btnRestart.addEventListener('click', ()=>{
+  // set firstBoot false so overlay doesn't appear after restart
+  firstBoot = false;
+  initGame(false); // false = don't show start overlay
+  startGame(); // сразу запускаем
+});
+
+/* =================== Leaderboard / GAS integration =================== */
+async function sendScoreToSheets({ username, score, tg_id }){
+  // Отправляем на LB_URL, GAS должен уметь обрабатывать и сохранять максимум (best score) по пользователю
   const payload = { username, score: String(score), tg_id };
+  // Попробуем sendBeacon (лучше при закрытии),
+  // затем fetch с CORS, если не удалось — обычный fetch
   try{
     if (navigator.sendBeacon){
       const blob = new Blob([JSON.stringify(payload)], { type:'application/json' });
-      const ok = navigator.sendBeacon(LB_URL, blob);
-      if (ok) return {ok:true, via:'beacon'};
+      navigator.sendBeacon(LB_URL, blob);
+      return { ok:true, via:'beacon' };
     }
   } catch(e){}
   try{
-    await fetch(LB_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    return {ok:true, via:'no-cors'};
+    const res = await fetch(LB_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload), mode:'cors' });
+    return { ok: res.ok };
   } catch(e){
-    try{
-      const res = await fetch(LB_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      return {ok:res.ok};
-    } catch(err){ return {ok:false, error:String(err)}; }
+    try{ await fetch(LB_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) }); return { ok:true }; } catch(err){ return { ok:false, err: String(err) }; }
   }
 }
 
@@ -638,13 +847,13 @@ async function getTopFromSheets(){
   return res.json();
 }
 
-btnRestart.addEventListener('click', ()=>{ initGame(); });
-btnShare.addEventListener('click', async ()=>{ 
-  lbList.innerHTML=''; lbLoading.style.display='block'; lbModal.hidden=false;
+/* показываем только топ-10, без tg_id, первые 5 подсвечиваем */
+btnShare.addEventListener('click', async ()=>{
+  lbList.innerHTML = ''; lbLoading.style.display = 'block'; lbModal.hidden = false;
   try{
     const data = await getTopFromSheets();
     const top = (data.top || []).slice(0,10);
-    lbList.innerHTML='';
+    lbList.innerHTML = '';
     top.forEach((row, idx)=>{
       const li = document.createElement('li'); li.className = 'lb-item';
       if (idx < 5) li.classList.add('lb-top5');
@@ -657,60 +866,87 @@ btnShare.addEventListener('click', async ()=>{
     lbList.innerHTML = '<li style="padding:8px;color:#a00">Не удалось загрузить таблицу лидеров.</li>';
     console.warn(e);
   } finally{
-    lbLoading.style.display='none';
+    lbLoading.style.display = 'none';
   }
 });
-lbClose.addEventListener('click', ()=>{ lbModal.hidden=true; });
+lbClose.addEventListener('click', ()=>{ lbModal.hidden = true; });
 
-/* ---------------- Boot sequence ---------------- */
+/* =================== Render helpers & static draw =================== */
+function drawStatic(){ /* место для отладки */ }
+
+/* =================== Boot sequence: preload critical -> init -> background load =================== */
 async function boot(){
   loadingOverlay.style.display = 'flex';
-  loadingText.textContent = 'Загрузка ассетов... 0%';
+  loadingText.textContent = 'Загрузка критичных ассетов... 0%';
   loadingProgress.style.width = '0%';
   retryAssets.style.display = 'none';
+
+  // critical = STATIC_ASSETS
   try{
-    const imgs = await preloadAllAssets(ASSET_LIST, (loaded, total)=>{
-      const pct = Math.round(loaded/total*100);
-      loadingText.textContent = `Загрузка ассетов... ${pct}% (${loaded}/${total})`;
+    const crit = await preloadCriticalAssets(STATIC_ASSETS, (n, total, key)=>{
+      const pct = Math.round(n/total*100);
+      loadingText.textContent = `Загрузка критичных ассетов... ${pct}%`;
       loadingProgress.style.width = `${pct}%`;
     });
-    imagesByCategory = {};
-    for (const k in categoryConfig) imagesByCategory[k] = [];
-    hairsprayImages = [];
-    for (const k in imgs){
-      if (k.startsWith('balzam')) imagesByCategory['balzam'].push(imgs[k]);
-      else if (k.startsWith('Cream')) imagesByCategory['cream'].push(imgs[k]);
-      else if (k.startsWith('Shampoo')) imagesByCategory['shampoo'].push(imgs[k]);
-      else if (k.startsWith('tip')) imagesByCategory['tip'].push(imgs[k]);
-      else if (k.startsWith('hairspray')) hairsprayImages.push(imgs[k]);
-    }
-    headImg = imgs['golova'] || null;
-    bodyImg = imgs['telo1'] || null;
-    tailImg = imgs['telo2'] || null;
-    flowerImg = imgs['flower'] || null;
+
+    headImg = crit['golova'] || null;
+    bodyImg = crit['telo1'] || null;
+    tailImg = crit['telo2'] || null;
+    flowerImg = crit['flower'] || null;
+
+    // hide loading overlay and init game
     loadingOverlay.style.display = 'none';
-    initGame();
+    initGame(true);
+
+    // background load ALL_ASSETS (concurrency), fill imagesByCategory/hairsprayImages as they arrive
+    backgroundLoadAssets(ASSET_LIST, (loaded, total, key, url)=>{
+      // optional: could update a tiny status indicator
+    }).then(results=>{
+      // merge results into imagesByCategory
+      imagesByCategory = {};
+      for (const k in categoryConfig) imagesByCategory[k] = [];
+      hairsprayImages = [];
+      for (const key in results){
+        const img = results[key];
+        if (!img) continue;
+        if (key.startsWith('balzam')) imagesByCategory['balzam'].push(img);
+        else if (key.startsWith('Cream')) imagesByCategory['cream'].push(img);
+        else if (key.startsWith('Shampoo')) imagesByCategory['shampoo'].push(img);
+        else if (key.startsWith('tip')) imagesByCategory['tip'].push(img);
+        else if (key.startsWith('hairspray')) hairsprayImages.push(img);
+      }
+      console.log('Background assets loaded');
+    }).catch(err=>{
+      console.warn('Background load error', err);
+    });
+
   } catch(err){
-    console.error('Preload failed', err);
-    loadingText.textContent = 'Ошибка загрузки ассетов. Проверь пути и сеть.';
+    console.error('Critical preload failed', err);
+    loadingText.textContent = 'Ошибка загрузки критичных ассетов. Проверь сеть/пути.';
     retryAssets.style.display = 'inline-block';
     retryAssets.onclick = () => { boot(); };
   }
 }
 
-/* ---------------- Helpers for Telegram user info (used when sending score) ---------------- */
+/* =================== Telegram helpers (for sending tg id & username) =================== */
 (function tgReady(){ try{ if (Telegram?.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand?.(); } }catch(e){} })();
 function getTgUser(){ const u = Telegram?.WebApp?.initDataUnsafe?.user; return u || null; }
 function getTgId(){ const u = getTgUser(); return u?.id ? String(u.id) : ''; }
-function getTgUsername(){ const u = getTgUser(); if (!u) return ''; if (u.username) return '@'+u.username; const fn = u.first_name||'', ln = u.last_name||''; const combo = (fn + ' ' + ln).trim(); return combo || 'Игрок'; }
+function getTgUsername(){ const u = getTgUser(); if (!u) return ''; if (u.username) return '@'+u.username; const fn = u.first_name || '', ln = u.last_name || ''; const combo = (fn + ' ' + ln).trim(); return combo || 'Игрок'; }
 
-/* ---------------- Expose debug helpers ---------------- */
-window._hp = { initGame, startGame, setFlowerCells(cells){ window._FLOWER_CELLS = cells; useFlowerCellsFromWindowOrDefault(); }, getState(){ return { tileSize, COLS, ROWS, canvasW, canvasH, gameStarted, gameOver, scoreVar }; } };
+/* =================== Expose debug helpers =================== */
+window._hp = {
+  initGame,
+  startGame,
+  getState(){ return { tileSize, COLS, ROWS, canvasW, canvasH, gameStarted, gameOver, scoreVar }; },
+  setFlowerCells(cells){ window._FLOWER_CELLS = cells; useFlowerCellsFromWindowOrDefault(); }
+};
 
-/* ---------------- Start ---------------- */
+/* =================== Start boot =================== */
 resizeCanvas();
 boot();
 
 </script>
 </body>
 </html>
+
